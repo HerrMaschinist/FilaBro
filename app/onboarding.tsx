@@ -5,7 +5,6 @@ import {
   TextInput,
   StyleSheet,
   Pressable,
-  useColorScheme,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -15,8 +14,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import Colors from "@/constants/colors";
-import { useApp } from "@/contexts/AppContext";
+import { useTranslation } from "react-i18next";
+import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { checkHealth } from "@/lib/spoolman";
 
 const DEFAULT_URL = "http://192.168.50.10:7912";
@@ -30,9 +29,8 @@ interface DiagInfo {
 }
 
 export default function OnboardingScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-  const colors = isDark ? Colors.dark : Colors.light;
+  const { t } = useTranslation();
+  const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { setServerUrl, markOnboarded } = useApp();
 
@@ -83,23 +81,31 @@ export default function OnboardingScreen() {
 
   const handleConnect = async () => {
     const trimmed = normalizeInput(url);
+    if (!trimmed) return;
     await setServerUrl(trimmed);
     await markOnboarded();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.replace("/(tabs)");
   };
 
-  const s = makeStyles(colors);
+  const handleSkip = async () => {
+    await markOnboarded();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.replace("/(tabs)");
+  };
+
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0) + 32;
 
   const errorTypeLabel: Record<string, string> = {
-    timeout: "Timeout",
-    network: "Network unreachable",
-    cleartext: "HTTP blocked",
-    http_error: "HTTP error",
-    parse_error: "Parse error",
-    unknown: "Unknown error",
+    timeout: t("onboarding.error_type.timeout"),
+    network: t("onboarding.error_type.network"),
+    cleartext: t("onboarding.error_type.cleartext"),
+    http_error: t("onboarding.error_type.http_error"),
+    parse_error: t("onboarding.error_type.parse_error"),
+    unknown: t("onboarding.error_type.unknown"),
   };
+
+  const s = makeStyles(colors);
 
   return (
     <KeyboardAvoidingView
@@ -115,14 +121,16 @@ export default function OnboardingScreen() {
           <View style={[s.iconWrap, { backgroundColor: `${colors.accent}18` }]}>
             <Ionicons name="layers" size={44} color={colors.accent} />
           </View>
-          <Text style={[s.title, { color: colors.text }]}>FilaBro</Text>
+          <Text style={[s.title, { color: colors.text }]}>{t("onboarding.title")}</Text>
           <Text style={[s.subtitle, { color: colors.textSecondary }]}>
-            Manage your filament collection via Spoolman.
+            {t("onboarding.subtitle")}
           </Text>
         </View>
 
         <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
-          <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>SERVER URL</Text>
+          <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>
+            {t("onboarding.server_url_label")}
+          </Text>
           <TextInput
             style={[s.input, { color: colors.text, backgroundColor: colors.background, borderColor: colors.surfaceBorder }]}
             value={url}
@@ -136,7 +144,7 @@ export default function OnboardingScreen() {
             onSubmitEditing={handleCheck}
           />
           <Text style={[s.hint, { color: colors.textTertiary }]}>
-            HTTP is supported for local networks and VPN mesh IPs.
+            {t("onboarding.http_hint")}
           </Text>
         </View>
 
@@ -144,7 +152,8 @@ export default function OnboardingScreen() {
           <View style={[s.banner, { backgroundColor: `${colors.success}15`, borderColor: `${colors.success}40` }]}>
             <Ionicons name="checkmark-circle" size={20} color={colors.success} />
             <Text style={[s.bannerText, { color: colors.success }]}>
-              Connected{serverVersion ? ` · Spoolman v${serverVersion}` : ""}
+              {t("onboarding.connected")}
+              {serverVersion ? ` · ${t("onboarding.spoolman_version", { version: serverVersion })}` : ""}
             </Text>
           </View>
         )}
@@ -161,7 +170,9 @@ export default function OnboardingScreen() {
               {diag.errorMsg}
             </Text>
             <View style={[s.diagEndpointRow, { backgroundColor: `${colors.error}10` }]}>
-              <Text style={[s.diagEndpointLabel, { color: colors.textTertiary }]}>Endpoint</Text>
+              <Text style={[s.diagEndpointLabel, { color: colors.textTertiary }]}>
+                {t("onboarding.endpoint_label")}
+              </Text>
               <Text style={[s.diagEndpoint, { color: colors.textSecondary }]} numberOfLines={1}>
                 {diag.endpoint}
               </Text>
@@ -179,7 +190,9 @@ export default function OnboardingScreen() {
           ) : (
             <>
               <Ionicons name="wifi" size={18} color={colors.accent} />
-              <Text style={[s.btnOutlineText, { color: colors.accent }]}>Test Connection</Text>
+              <Text style={[s.btnOutlineText, { color: colors.accent }]}>
+                {t("onboarding.test_connection")}
+              </Text>
             </>
           )}
         </Pressable>
@@ -195,7 +208,7 @@ export default function OnboardingScreen() {
           disabled={status !== "ok"}
         >
           <Text style={[s.btnPrimaryText, { color: status === "ok" ? "#000" : colors.textTertiary }]}>
-            Get Started
+            {t("onboarding.connect")}
           </Text>
           <Ionicons
             name="arrow-forward"
@@ -204,15 +217,31 @@ export default function OnboardingScreen() {
           />
         </Pressable>
 
+        <View style={s.dividerRow}>
+          <View style={[s.divider, { backgroundColor: colors.surfaceBorder }]} />
+          <Text style={[s.dividerText, { color: colors.textTertiary }]}>or</Text>
+          <View style={[s.divider, { backgroundColor: colors.surfaceBorder }]} />
+        </View>
+
+        <Pressable
+          style={({ pressed }) => [s.btn, s.btnSkip, { borderColor: colors.surfaceBorder }, pressed && { opacity: 0.7 }]}
+          onPress={handleSkip}
+        >
+          <Ionicons name="cloud-offline-outline" size={18} color={colors.textSecondary} />
+          <Text style={[s.btnSkipText, { color: colors.textSecondary }]}>
+            {t("onboarding.skip")}
+          </Text>
+        </Pressable>
+
         <Text style={[s.footNote, { color: colors.textTertiary }]}>
-          Server URL can be changed later in Settings.
+          {t("onboarding.skip_hint")}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function makeStyles(colors: typeof Colors.dark) {
+function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
   return StyleSheet.create({
     container: {
       flexGrow: 1,
@@ -335,6 +364,28 @@ function makeStyles(colors: typeof Colors.dark) {
     btnOutlineText: {
       fontSize: 16,
       fontFamily: "Inter_600SemiBold",
+    },
+    btnSkip: {
+      borderWidth: 1,
+      backgroundColor: "transparent",
+    },
+    btnSkipText: {
+      fontSize: 16,
+      fontFamily: "Inter_500Medium",
+    },
+    dividerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginVertical: 2,
+    },
+    divider: {
+      flex: 1,
+      height: 1,
+    },
+    dividerText: {
+      fontSize: 12,
+      fontFamily: "Inter_400Regular",
     },
     footNote: {
       textAlign: "center",

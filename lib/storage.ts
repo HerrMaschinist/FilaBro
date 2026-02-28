@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   LAST_SYNC: "filabro_last_sync",
   PENDING_UPDATES: "filabro_pending_updates",
   DEFAULT_WEIGHT_MODE: "filabro_default_weight_mode",
+  LANGUAGE: "filabro_language",
 } as const;
 
 async function secureGet(key: string): Promise<string | null> {
@@ -40,6 +41,10 @@ export async function getServerUrl(): Promise<string | null> {
 
 export async function setServerUrl(url: string): Promise<void> {
   return secureSet(STORAGE_KEYS.SERVER_URL, url);
+}
+
+export async function deleteServerUrl(): Promise<void> {
+  return secureDelete(STORAGE_KEYS.SERVER_URL);
 }
 
 export async function getIsOnboarded(): Promise<boolean> {
@@ -151,4 +156,12 @@ export async function getDefaultWeightMode(): Promise<string> {
 
 export async function setDefaultWeightMode(mode: string): Promise<void> {
   return AsyncStorage.setItem(STORAGE_KEYS.DEFAULT_WEIGHT_MODE, mode);
+}
+
+export async function getLanguage(): Promise<string> {
+  return (await AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE)) ?? "en";
+}
+
+export async function setLanguage(lang: string): Promise<void> {
+  return AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, lang);
 }

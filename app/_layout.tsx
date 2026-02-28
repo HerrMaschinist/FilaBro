@@ -1,3 +1,4 @@
+import "@/lib/i18n";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -15,9 +16,8 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
-import { useColorScheme } from "react-native";
-import Colors from "@/constants/colors";
 import { initDatabase } from "@/src/data/db/client";
+import { useAppTheme } from "@/contexts/AppContext";
 
 // Run SQLite migrations synchronously before any component mounts.
 // initDatabase() is idempotent — safe to call at module load time.
@@ -26,9 +26,7 @@ initDatabase();
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-  const colors = isDark ? Colors.dark : Colors.light;
+  const { colors } = useAppTheme();
 
   return (
     <Stack

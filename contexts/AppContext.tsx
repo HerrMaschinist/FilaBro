@@ -3,7 +3,7 @@
  *
  * Internally uses:
  *   SpoolRepository + SyncService  → data and sync
- *   lib/storage                    → settings (server URL, theme, etc.)
+ *   lib/storage                    → settings (server URL, theme, language, etc.)
  *
  * Screens NEVER call SpoolmanClient or SpoolRepository directly.
  * All reads go through this context.
@@ -18,9 +18,11 @@ import React, {
   useMemo,
   ReactNode,
 } from "react";
+import { useColorScheme } from "react-native";
 import {
   getServerUrl,
   setServerUrl as persistServerUrl,
+  deleteServerUrl,
   setIsOnboarded,
   getIsOnboarded,
   setLastSync,
@@ -29,18 +31,18 @@ import {
   setTheme as persistTheme,
   getDefaultWeightMode,
   setDefaultWeightMode as persistWeightMode,
+  getLanguage,
+  setLanguage as persistLanguage,
 } from "@/lib/storage";
 import type { Spool } from "@/lib/spoolman";
 import type { SpoolView } from "@/src/domain/models";
 import { SpoolRepository } from "@/src/data/repositories/SpoolRepository";
 import * as SyncService from "@/src/data/sync/SyncService";
 import { isPersistenceEnabled } from "@/src/data/db/client";
+import Colors from "@/constants/colors";
+import i18n from "@/lib/i18n";
 
 // ─── Compatibility mapping ────────────────────────────────────────────────────
-// Converts internal SpoolView (domain) to the legacy Spool type that existing
-// screens expect. The _localId and _isFavorite bridge fields are added so
-// context methods can resolve by remoteId without extra DB lookups.
-
 function toViewSpool(sv: SpoolView): Spool {
   const filament: Spool["filament"] = sv.filament
     ? {
@@ -83,6 +85,8 @@ export interface PendingUpdate {
   timestamp: number;
 }
 
+export type ConnectionStatus = "connected" | "offline" | "no_server" | "error";
+
 // ─── Context interface ────────────────────────────────────────────────────────
 interface AppContextValue {
   serverUrl: string;
@@ -91,6 +95,7 @@ interface AppContextValue {
 
   setServerUrl: (url: string) => Promise<void>;
   markOnboarded: () => Promise<void>;
+  disconnectServer: () => Promise<void>;
 
   spools: Spool[];
   isSpoolsLoading: boolean;
@@ -102,12 +107,13 @@ interface AppContextValue {
   toggleFavorite: (id: number) => void;
   isFavorite: (id: number) => boolean;
 
-  /** Derived from dirty SQLite rows — kept for screen compat */
   pendingUpdates: PendingUpdate[];
   updateWeight: (spoolId: number, weight: number) => Promise<void>;
   syncPending: () => Promise<void>;
 
   isOnline: boolean;
+  connectionStatus: ConnectionStatus;
+  isConnected: boolean;
 
   theme: string;
   setTheme: (t: string) => void;
@@ -115,10 +121,9 @@ interface AppContextValue {
   defaultWeightMode: string;
   setDefaultWeightMode: (m: string) => void;
 
-  /**
-   * false on web preview — SQLite is unavailable, no data is persisted.
-   * Write operations throw. Screens should surface a banner when false.
-   */
+  language: string;
+  setLanguage: (lang: string) => Promise<void>;
+
   persistenceEnabled: boolean;
 }
 
@@ -133,22 +138,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSpoolsLoading, setIsSpoolsLoading] = useState(false);
   const [spoolsError, setSpoolsError] = useState<string | null>(null);
   const [lastSync, setLastSyncState] = useState<number | null>(null);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(false);
   const [theme, setThemeState] = useState("auto");
   const [defaultWeightMode, setDefaultWeightModeState] = useState("slider");
-  /** Remote spool IDs that have a local dirty weight not yet confirmed synced */
+  const [language, setLanguageState] = useState("en");
   const [dirtySpoolIds, setDirtySpoolIds] = useState<Set<number>>(new Set());
 
   // ─── Startup: load settings + local DB snapshot ───────────────────────────
   useEffect(() => {
     (async () => {
       try {
-        const [url, onboarded, lastSyncTs, thm, wmode] = await Promise.all([
+        const [url, onboarded, lastSyncTs, thm, wmode, lang] = await Promise.all([
           getServerUrl(),
           getIsOnboarded(),
           getLastSync(),
           getTheme(),
           getDefaultWeightMode(),
+          getLanguage(),
         ]);
 
         const resolvedUrl = url ?? "";
@@ -157,9 +163,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setLastSyncState(lastSyncTs);
         setThemeState(thm);
         setDefaultWeightModeState(wmode);
+        setLanguageState(lang);
 
-        // Load immediately from SQLite (no network, instant)
-        // Skip on web — persistence is disabled, getLocalSpools() returns []
+        if (lang !== "en") {
+          i18n.changeLanguage(lang);
+        }
+
         if (onboarded && isPersistenceEnabled) {
           const local = await SyncService.getLocalSpools();
           setSpools(local.map(toViewSpool));
@@ -174,6 +183,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setServerUrl = useCallback(async (url: string) => {
     await persistServerUrl(url);
     setServerUrlState(url);
+    setIsOnline(false);
+    setSpoolsError(null);
   }, []);
 
   const markOnboarded = useCallback(async () => {
@@ -181,12 +192,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsOnboardedState(true);
   }, []);
 
+  const disconnectServer = useCallback(async () => {
+    await deleteServerUrl();
+    setServerUrlState("");
+    setIsOnline(false);
+    setSpoolsError(null);
+  }, []);
+
+  const setLanguage = useCallback(async (lang: string) => {
+    setLanguageState(lang);
+    await persistLanguage(lang);
+    await i18n.changeLanguage(lang);
+  }, []);
+
+  // ─── Connection status (derived) ──────────────────────────────────────────
+  const connectionStatus = useMemo<ConnectionStatus>(() => {
+    if (!serverUrl) return "no_server";
+    if (isOnline) return "connected";
+    if (spoolsError) return "error";
+    return "offline";
+  }, [serverUrl, isOnline, spoolsError]);
+
+  const isConnected = connectionStatus === "connected";
+
   // ─── Sync: push then pull, reload from DB ─────────────────────────────────
   const refreshSpools = useCallback(async () => {
     if (!serverUrl) return;
 
-    // Web: persistence is disabled — DB writes throw explicitly.
-    // Skip sync entirely; empty state is the correct web preview behavior.
     if (!isPersistenceEnabled) {
       setSpoolsError(
         "Web preview mode: no local persistence. Run on a native device via Expo Go to sync data."
@@ -215,7 +247,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const msg = err instanceof Error ? err.message : "Unknown sync error";
       setSpoolsError(msg);
       setIsOnline(false);
-      // Fallback: serve whatever is already in local DB
       const local = await SyncService.getLocalSpools();
       setSpools(local.map(toViewSpool));
     } finally {
@@ -240,13 +271,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!spool?._localId) return;
 
       const next = !spool._isFavorite;
-      // Optimistic UI
       setSpools((prev) =>
         prev.map((s) => (s.id === id ? { ...s, _isFavorite: next } : s))
       );
-      // Persist to DB (fire and forget — no network call)
       SpoolRepository.setFavorite(spool._localId, next).catch(() => {
-        // Revert on failure
         setSpools((prev) =>
           prev.map((s) => (s.id === id ? { ...s, _isFavorite: !next } : s))
         );
@@ -264,36 +292,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const spool = spools.find((s) => s.id === spoolId);
       if (!spool?._localId) return;
 
-      // Optimistic UI
       setSpools((prev) =>
         prev.map((s) =>
           s.id === spoolId ? { ...s, remaining_weight: weight } : s
         )
       );
 
-      // Mark as pending locally
       setDirtySpoolIds((prev) => {
         const next = new Set(prev);
         next.add(spoolId);
         return next;
       });
 
-      // Persist to local DB (marks dirty in SQLite)
       await SpoolRepository.updateRemainingWeight(spool._localId, weight);
 
-      // Background push — if offline, stays dirty for next sync()
       if (serverUrl) {
-        SyncService.pushOne(serverUrl, spool._localId).then(() => {
-          setIsOnline(true);
-          setDirtySpoolIds((prev) => {
-            const next = new Set(prev);
-            next.delete(spoolId);
-            return next;
+        SyncService.pushOne(serverUrl, spool._localId)
+          .then(() => {
+            setIsOnline(true);
+            setDirtySpoolIds((prev) => {
+              const next = new Set(prev);
+              next.delete(spoolId);
+              return next;
+            });
+          })
+          .catch(() => {
+            setIsOnline(false);
           });
-        }).catch(() => {
-          setIsOnline(false);
-          // Remains dirty — syncPending() or next refreshSpools() will retry
-        });
       }
     },
     [spools, serverUrl]
@@ -312,7 +337,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [serverUrl]);
 
-  // pendingUpdates: derived from in-flight dirty spool IDs — kept for screen backward compat
   const pendingUpdates = useMemo<PendingUpdate[]>(
     () =>
       spools
@@ -345,6 +369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoading,
       setServerUrl,
       markOnboarded,
+      disconnectServer,
       spools,
       isSpoolsLoading,
       spoolsError,
@@ -357,10 +382,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateWeight,
       syncPending,
       isOnline,
+      connectionStatus,
+      isConnected,
       theme,
       setTheme,
       defaultWeightMode,
       setDefaultWeightMode,
+      language,
+      setLanguage,
       persistenceEnabled: isPersistenceEnabled,
     }),
     [
@@ -369,6 +398,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoading,
       setServerUrl,
       markOnboarded,
+      disconnectServer,
       spools,
       isSpoolsLoading,
       spoolsError,
@@ -381,11 +411,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateWeight,
       syncPending,
       isOnline,
+      connectionStatus,
+      isConnected,
       theme,
       setTheme,
       defaultWeightMode,
       setDefaultWeightMode,
-      // isPersistenceEnabled is a module-level constant — no reactive dep needed
+      language,
+      setLanguage,
     ]
   );
 
@@ -396,4 +429,18 @@ export function useApp() {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error("useApp must be used within AppProvider");
   return ctx;
+}
+
+/**
+ * Returns the correct color palette and isDark flag based on the user's
+ * stored theme preference (auto/light/dark) combined with the system color scheme.
+ * Use this in every screen instead of calling useColorScheme() directly.
+ */
+export function useAppTheme() {
+  const { theme } = useApp();
+  const systemColorScheme = useColorScheme();
+  const isDark =
+    theme === "auto" ? systemColorScheme === "dark" : theme === "dark";
+  const colors = isDark ? Colors.dark : Colors.light;
+  return { colors, isDark };
 }
