@@ -28,6 +28,10 @@ export interface Spool {
   lot_nr?: string;
   last_used?: string;
   first_used?: string;
+  /** Internal bridge field: SQLite local_id. Not from Spoolman API. */
+  _localId?: string;
+  /** Internal bridge field: local favorite state. Not from Spoolman API. */
+  _isFavorite?: boolean;
   registered?: string;
 }
 

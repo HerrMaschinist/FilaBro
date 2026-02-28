@@ -17,6 +17,11 @@ import {
 } from "@expo-google-fonts/inter";
 import { useColorScheme } from "react-native";
 import Colors from "@/constants/colors";
+import { initDatabase } from "@/src/data/db/client";
+
+// Run SQLite migrations synchronously before any component mounts.
+// initDatabase() is idempotent — safe to call at module load time.
+initDatabase();
 
 SplashScreen.preventAutoHideAsync();
 
