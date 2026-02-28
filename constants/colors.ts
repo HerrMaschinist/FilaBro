@@ -1,42 +1,42 @@
-const ACCENT = "#00D4AA";
-const ACCENT_DIM = "#00A882";
+const ACCENT = "#3B82F6";
+const ACCENT_DIM = "#2563EB";
 const VIOLET = "#7B5EA7";
 
 const dark = {
-  background: "#0D0D14",
-  surface: "#15151F",
-  surfaceElevated: "#1E1E2C",
-  surfaceBorder: "#252535",
-  text: "#F0F0F8",
-  textSecondary: "#8080A0",
-  textTertiary: "#505070",
+  background: "#0B0F1A",
+  surface: "#111827",
+  surfaceElevated: "#1E293B",
+  surfaceBorder: "#1E293B",
+  text: "#F1F5F9",
+  textSecondary: "#94A3B8",
+  textTertiary: "#475569",
   tint: ACCENT,
   tintDim: ACCENT_DIM,
   accent: ACCENT,
   violet: VIOLET,
-  error: "#FF5563",
-  warning: "#FF9F43",
-  success: ACCENT,
-  tabIconDefault: "#505070",
+  error: "#EF4444",
+  warning: "#F59E0B",
+  success: "#22C55E",
+  tabIconDefault: "#475569",
   tabIconSelected: ACCENT,
 };
 
 const light = {
-  background: "#F5F5FA",
+  background: "#F0F4FA",
   surface: "#FFFFFF",
   surfaceElevated: "#FFFFFF",
-  surfaceBorder: "#E0E0EC",
-  text: "#0D0D20",
-  textSecondary: "#5A5A78",
-  textTertiary: "#9090B0",
+  surfaceBorder: "#CBD5E1",
+  text: "#0F172A",
+  textSecondary: "#475569",
+  textTertiary: "#94A3B8",
   tint: ACCENT_DIM,
-  tintDim: "#008A68",
+  tintDim: "#1D4ED8",
   accent: ACCENT_DIM,
   violet: VIOLET,
-  error: "#D63040",
-  warning: "#D4830A",
-  success: ACCENT_DIM,
-  tabIconDefault: "#9090B0",
+  error: "#DC2626",
+  warning: "#D97706",
+  success: "#16A34A",
+  tabIconDefault: "#94A3B8",
   tabIconSelected: ACCENT_DIM,
 };
 

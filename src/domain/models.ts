@@ -9,6 +9,7 @@ export interface Manufacturer {
   localId: string;
   remoteId?: number;
   name: string;
+  website?: string;
   comment?: string;
   syncState: SyncState;
   lastModifiedAt: number; // unix ms
@@ -30,6 +31,9 @@ export interface Filament {
   weight?: number;
   /** Weight of empty spool in grams */
   spoolWeight?: number;
+  printTempMin?: number;
+  printTempMax?: number;
+  density?: number;
   comment?: string;
   syncState: SyncState;
   lastModifiedAt: number; // unix ms
@@ -49,6 +53,9 @@ export interface Spool {
   usedWeight?: number;
   comment?: string;
   archived: boolean;
+  displayName?: string;
+  qrCode?: string;
+  nfcTagId?: string;
   lotNr?: string;
   lastUsed?: string;
   firstUsed?: string;

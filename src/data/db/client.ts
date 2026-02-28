@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import * as schema from "./schema";
 
 const DB_NAME = "filabro.db";
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 /**
  * Versioned SQL migrations.
@@ -84,6 +84,18 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
          nozzle_temp           INTEGER,
          compatible_materials  TEXT
        )`,
+    ],
+  },
+  {
+    version: 2,
+    statements: [
+      `ALTER TABLE manufacturers ADD COLUMN website TEXT`,
+      `ALTER TABLE filaments ADD COLUMN print_temp_min INTEGER`,
+      `ALTER TABLE filaments ADD COLUMN print_temp_max INTEGER`,
+      `ALTER TABLE filaments ADD COLUMN density REAL`,
+      `ALTER TABLE spools ADD COLUMN display_name TEXT`,
+      `ALTER TABLE spools ADD COLUMN qr_code TEXT`,
+      `ALTER TABLE spools ADD COLUMN nfc_tag_id TEXT`,
     ],
   },
 ];
