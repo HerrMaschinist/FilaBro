@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,8 +13,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
+import Constants from "expo-constants";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { healthCheck } from "@/src/data/api/SpoolmanClient";
+import {
+  checkNfcAvailability,
+  type NfcAvailability,
+} from "@/src/features/nfc";
 
 type TestState = "idle" | "testing" | "ok" | "error";
 
@@ -55,6 +60,11 @@ export default function SettingsScreen() {
   const [testState, setTestState] = useState<TestState>("idle");
   const [testMessage, setTestMessage] = useState("");
   const [serverVersion, setServerVersion] = useState<string | null>(null);
+  const [nfcInfo, setNfcInfo] = useState<NfcAvailability | null>(null);
+
+  useEffect(() => {
+    checkNfcAvailability().then(setNfcInfo);
+  }, []);
 
   const topInset = insets.top + (Platform.OS === "web" ? 67 : 0);
 
@@ -311,6 +321,76 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      {/* ── Debug ── */}
+      <Text style={[s.sectionHeader, { color: colors.textSecondary }]}>{t("settings.debug")}</Text>
+      <View style={[s.card, { backgroundColor: colors.surface }]}>
+        {/* Persistence */}
+        <View style={s.debugRow}>
+          <Ionicons
+            name="server-outline"
+            size={15}
+            color={Platform.OS !== "web" ? colors.success : colors.textTertiary}
+          />
+          <Text style={[s.debugKey, { color: colors.textSecondary }]}>
+            {t("settings.debug_persistence")}
+          </Text>
+          <Text
+            style={[
+              s.debugValue,
+              { color: Platform.OS !== "web" ? colors.success : colors.textTertiary },
+            ]}
+          >
+            {Platform.OS !== "web"
+              ? t("settings.debug_persistence_on")
+              : t("settings.debug_persistence_off")}
+          </Text>
+        </View>
+
+        <View style={[s.divider, { backgroundColor: colors.surfaceBorder }]} />
+
+        {/* NFC */}
+        <View style={s.debugRow}>
+          <Ionicons
+            name="radio-outline"
+            size={15}
+            color={nfcInfo?.available ? colors.success : colors.textTertiary}
+          />
+          <Text style={[s.debugKey, { color: colors.textSecondary }]}>
+            {t("settings.debug_nfc")}
+          </Text>
+          <Text
+            style={[
+              s.debugValue,
+              { color: nfcInfo?.available ? colors.success : colors.textTertiary },
+            ]}
+          >
+            {nfcInfo === null
+              ? "…"
+              : nfcInfo.available
+              ? t("settings.debug_nfc_available")
+              : t("settings.debug_nfc_unavailable")}
+          </Text>
+        </View>
+        {nfcInfo && !nfcInfo.available && (
+          <Text style={[s.debugHint, { color: colors.textTertiary }]}>
+            {t("settings.debug_nfc_reason", { reason: nfcInfo.reason })}
+          </Text>
+        )}
+
+        <View style={[s.divider, { backgroundColor: colors.surfaceBorder }]} />
+
+        {/* App version */}
+        <View style={s.debugRow}>
+          <Ionicons name="information-circle-outline" size={15} color={colors.textTertiary} />
+          <Text style={[s.debugKey, { color: colors.textSecondary }]}>
+            {t("settings.debug_version")}
+          </Text>
+          <Text style={[s.debugValue, { color: colors.textTertiary }]}>
+            {Constants.expoConfig?.version ?? "—"}
+          </Text>
+        </View>
+      </View>
+
       <View style={{ height: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 100 }} />
     </ScrollView>
   );
@@ -422,6 +502,29 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
     segmentLabel: {
       fontSize: 14,
       fontFamily: "Inter_500Medium",
+    },
+    debugRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    debugKey: {
+      flex: 1,
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+    },
+    debugValue: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
+    },
+    debugHint: {
+      fontSize: 11,
+      fontFamily: "Inter_400Regular",
+      marginLeft: 23,
+    },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      marginVertical: 2,
     },
   });
 }

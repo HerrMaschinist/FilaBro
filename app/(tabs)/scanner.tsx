@@ -1,51 +1,82 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  useColorScheme,
   Platform,
   Alert,
+  ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Colors from "@/constants/colors";
-import { useApp } from "@/contexts/AppContext";
-
-// expo-camera v17 for Expo SDK 54
+import { useTranslation } from "react-i18next";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { useApp, useAppTheme } from "@/contexts/AppContext";
+import {
+  checkNfcAvailability,
+  scanTagOnce,
+  stopScan,
+  type NfcAvailability,
+} from "@/src/features/nfc";
 
+type ScanMode = "qr" | "nfc";
+type NfcScanState = "idle" | "checking" | "scanning" | "success" | "error";
+
+// ─── QR payload extraction ────────────────────────────────────────────────────
 function extractSpoolId(data: string): number | null {
-  // Match direct numeric ID
   if (/^\d+$/.test(data.trim())) return parseInt(data.trim(), 10);
-
-  // Match URLs like http://host/spool/123 or /spool/123
-  const urlMatch = data.match(/\/spool\/(\d+)/i);
+  const urlMatch = data.match(/\/spool[s]?\/(\d+)/i);
   if (urlMatch) return parseInt(urlMatch[1], 10);
-
-  // Match query param ?id=123
-  const qMatch = data.match(/[?&]id=(\d+)/i);
+  const qMatch = data.match(/[?&](?:spool_?id|id)=(\d+)/i);
   if (qMatch) return parseInt(qMatch[1], 10);
-
   return null;
 }
 
+// ─── Main screen ─────────────────────────────────────────────────────────────
 export default function ScannerScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-  const colors = isDark ? Colors.dark : Colors.light;
+  const { t } = useTranslation();
+  const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { spools } = useApp();
 
+  const [mode, setMode] = useState<ScanMode>("qr");
+
+  // QR state
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
 
+  // NFC state
+  const [nfcAvailability, setNfcAvailability] = useState<NfcAvailability | null>(null);
+  const [nfcState, setNfcState] = useState<NfcScanState>("idle");
+  const [nfcMessage, setNfcMessage] = useState("");
+  const [nfcRaw, setNfcRaw] = useState<string | null>(null);
+  const isScanningRef = useRef(false);
+
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
+  // Check NFC when switching to NFC mode
+  useEffect(() => {
+    if (mode === "nfc" && !nfcAvailability) {
+      setNfcState("checking");
+      checkNfcAvailability().then((result) => {
+        setNfcAvailability(result);
+        setNfcState("idle");
+      });
+    }
+    // Cancel any ongoing NFC scan when leaving NFC mode
+    if (mode !== "nfc" && isScanningRef.current) {
+      isScanningRef.current = false;
+      stopScan();
+      setNfcState("idle");
+    }
+  }, [mode]);
+
+  // ── QR handler ────────────────────────────────────────────────────────────
   const handleBarcode = useCallback(
     ({ data }: { data: string }) => {
       if (scanned) return;
@@ -56,26 +87,24 @@ export default function ScannerScreen() {
       const spoolId = extractSpoolId(data);
 
       if (spoolId !== null) {
-        // Check local cache first
         const found = spools.find((s) => s.id === spoolId);
         if (found) {
           router.push({ pathname: "/spool/[id]", params: { id: String(spoolId) } });
         } else {
           Alert.alert(
-            "Spool Found",
-            `ID ${spoolId} – navigating to detail...`,
+            t("scanner.qr_spool_found"),
+            t("scanner.qr_spool_found_msg", { id: spoolId }),
             [
               {
-                text: "Open",
+                text: t("scanner.qr_open"),
                 onPress: () =>
                   router.push({ pathname: "/spool/[id]", params: { id: String(spoolId) } }),
               },
-              { text: "Cancel", onPress: () => setScanned(false) },
+              { text: t("common.cancel"), onPress: () => setScanned(false) },
             ]
           );
         }
       } else {
-        // Search by content in local cache
         const q = data.toLowerCase();
         const matches = spools.filter(
           (s) =>
@@ -83,100 +112,380 @@ export default function ScannerScreen() {
             s.filament?.vendor?.name?.toLowerCase().includes(q) ||
             String(s.id) === q.trim()
         );
-
         if (matches.length === 1) {
           router.push({ pathname: "/spool/[id]", params: { id: String(matches[0].id) } });
         } else {
           Alert.alert(
-            "Code Scanned",
-            `Could not identify a spool from:\n"${data.slice(0, 80)}"`,
-            [{ text: "Scan Again", onPress: () => setScanned(false) }]
+            t("scanner.qr_no_match"),
+            t("scanner.qr_no_match_msg", { data: data.slice(0, 80) }),
+            [{ text: t("scanner.qr_scan_again"), onPress: () => setScanned(false) }]
           );
         }
       }
     },
-    [scanned, spools]
+    [scanned, spools, t]
   );
+
+  // ── NFC scan ──────────────────────────────────────────────────────────────
+  const handleNfcScan = useCallback(async () => {
+    if (!nfcAvailability?.available) return;
+    if (isScanningRef.current) {
+      // Cancel active scan
+      isScanningRef.current = false;
+      await stopScan();
+      setNfcState("idle");
+      setNfcMessage("");
+      return;
+    }
+
+    isScanningRef.current = true;
+    setNfcState("scanning");
+    setNfcMessage(t("scanner.nfc_scanning"));
+    setNfcRaw(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const payload = await scanTagOnce();
+      isScanningRef.current = false;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      setNfcRaw(payload.raw);
+
+      if (payload.spoolId) {
+        const numericId = parseInt(payload.spoolId, 10);
+        setNfcState("success");
+        setNfcMessage(t("scanner.nfc_success"));
+        setTimeout(() => {
+          router.push({ pathname: "/spool/[id]", params: { id: payload.spoolId! } });
+          setNfcState("idle");
+          setNfcMessage("");
+        }, 600);
+      } else {
+        setNfcState("error");
+        setNfcMessage(t("scanner.nfc_no_spool"));
+      }
+    } catch (err: unknown) {
+      isScanningRef.current = false;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const msg = err instanceof Error ? err.message : t("scanner.nfc_unavailable_error", { msg: String(err) });
+      setNfcState("error");
+      setNfcMessage(msg);
+    }
+  }, [nfcAvailability, t]);
 
   const s = makeStyles(colors);
 
-  if (!permission) {
+  // ── Mode switcher ─────────────────────────────────────────────────────────
+  const ModeSwitcher = (
+    <View style={[s.modeSwitcher, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
+      {(["qr", "nfc"] as ScanMode[]).map((m) => (
+        <Pressable
+          key={m}
+          style={[s.modeBtn, mode === m && s.modeBtnActive]}
+          onPress={() => {
+            setMode(m);
+            Haptics.selectionAsync();
+          }}
+        >
+          <Ionicons
+            name={m === "qr" ? "qr-code-outline" : "radio-outline"}
+            size={15}
+            color={mode === m ? "#000" : "rgba(255,255,255,0.7)"}
+          />
+          <Text style={[s.modeBtnText, mode === m && s.modeBtnTextActive]}>
+            {m === "qr" ? t("scanner.mode_qr") : t("scanner.mode_nfc")}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
+  // ── Camera permission screens ─────────────────────────────────────────────
+  if (mode === "qr") {
+    if (!permission) {
+      return (
+        <View style={[s.container, { paddingTop: topPad }]}>
+          <Text style={[s.header, { color: "#fff" }]}>{t("scanner.title")}</Text>
+          {ModeSwitcher}
+          <View style={s.centered}>
+            <ActivityIndicator color={colors.accent} size="large" />
+          </View>
+        </View>
+      );
+    }
+
+    if (!permission.granted) {
+      return (
+        <View style={[s.container, { paddingTop: topPad }]}>
+          <Text style={[s.header, { color: "#fff" }]}>{t("scanner.title")}</Text>
+          {ModeSwitcher}
+          <View style={s.centered}>
+            <Ionicons name="camera-outline" size={64} color="rgba(255,255,255,0.35)" />
+            <Text style={[s.permTitle, { color: "#fff" }]}>
+              {t("scanner.camera_permission_title")}
+            </Text>
+            <Text style={[s.permText, { color: "rgba(255,255,255,0.6)" }]}>
+              {t("scanner.camera_permission_text")}
+            </Text>
+            {!permission.canAskAgain && Platform.OS !== "web" ? (
+              <Text style={[s.permText, { color: "rgba(255,255,255,0.5)", marginTop: 8 }]}>
+                {t("scanner.camera_permission_settings")}
+              </Text>
+            ) : (
+              <Pressable
+                style={[s.permBtn, { backgroundColor: colors.accent }]}
+                onPress={requestPermission}
+              >
+                <Text style={s.permBtnText}>{t("scanner.camera_allow")}</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      );
+    }
+
+    // ── QR camera view ───────────────────────────────────────────────────────
     return (
-      <View style={[s.container, { paddingTop: topPad }]}>
-        <View style={s.centered}>
-          <ActivityLoader color={colors.accent} />
+      <View style={s.container}>
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          barcodeScannerSettings={{
+            barcodeTypes: ["qr", "ean13", "ean8", "code128", "code39", "upc_a", "upc_e", "datamatrix"],
+          }}
+          onBarcodeScanned={scanned ? undefined : handleBarcode}
+        />
+        <View
+          style={[
+            s.overlay,
+            {
+              paddingTop: topPad + 8,
+              paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 90,
+            },
+          ]}
+        >
+          <Text style={s.overlayTitle}>{t("scanner.title")}</Text>
+
+          {ModeSwitcher}
+
+          <View style={s.viewfinder}>
+            <Corner pos="tl" />
+            <Corner pos="tr" />
+            <Corner pos="bl" />
+            <Corner pos="br" />
+            <Text style={s.viewfinderHint}>{t("scanner.qr_hint")}</Text>
+          </View>
+
+          {lastResult && scanned && (
+            <View style={s.resultCard}>
+              <Text style={s.resultLabel}>{t("scanner.qr_last_scan")}</Text>
+              <Text style={s.resultValue} numberOfLines={2}>{lastResult}</Text>
+            </View>
+          )}
+
+          <Pressable
+            style={({ pressed }) => [s.actionBtn, pressed && { opacity: 0.8 }]}
+            onPress={() => { setScanned(false); setLastResult(null); }}
+          >
+            <Ionicons name="refresh" size={20} color="#fff" />
+            <Text style={s.actionBtnText}>{t("scanner.qr_scan_again")}</Text>
+          </Pressable>
         </View>
       </View>
     );
   }
 
-  if (!permission.granted) {
-    return (
-      <View style={[s.container, { paddingTop: topPad }]}>
-        <Text style={[s.header, { color: colors.text }]}>Scanner</Text>
-        <View style={s.centered}>
-          <Ionicons name="camera-outline" size={64} color={colors.textTertiary} />
-          <Text style={[s.permTitle, { color: colors.text }]}>Camera Access Needed</Text>
-          <Text style={[s.permText, { color: colors.textSecondary }]}>
-            FilaBro needs camera access to scan barcodes and QR codes on your filament spools.
-          </Text>
-          {!permission.canAskAgain && Platform.OS !== "web" ? (
-            <Text style={[s.permText, { color: colors.textSecondary, marginTop: 8 }]}>
-              Please enable camera access in your device Settings.
-            </Text>
-          ) : (
-            <Pressable
-              style={[s.permBtn, { backgroundColor: colors.accent }]}
-              onPress={requestPermission}
+  // ── NFC mode ──────────────────────────────────────────────────────────────
+  return (
+    <View style={[s.container, { backgroundColor: colors.background }]}>
+      <View
+        style={[
+          s.nfcContainer,
+          {
+            paddingTop: topPad + 8,
+            paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 90,
+          },
+        ]}
+      >
+        <Text style={[s.header, { color: colors.text }]}>{t("scanner.title")}</Text>
+
+        {ModeSwitcher}
+
+        <View style={s.nfcContent}>
+          {/* Checking state */}
+          {nfcState === "checking" && (
+            <>
+              <ActivityIndicator color={colors.accent} size="large" />
+              <Text style={[s.nfcStatusText, { color: colors.textSecondary }]}>
+                {t("scanner.nfc_checking")}
+              </Text>
+            </>
+          )}
+
+          {/* Expo Go unavailable */}
+          {nfcState !== "checking" && nfcAvailability && !nfcAvailability.available && nfcAvailability.reason === "expo_go" && (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={s.nfcInfoCard}
             >
-              <Text style={s.permBtnText}>Allow Camera</Text>
-            </Pressable>
+              <View style={[s.nfcInfoBox, { backgroundColor: `${colors.warning}18`, borderColor: `${colors.warning}40` }]}>
+                <Ionicons name="information-circle-outline" size={36} color={colors.warning} />
+                <Text style={[s.nfcInfoTitle, { color: colors.text }]}>
+                  {t("scanner.nfc_unavailable_expo_go_title")}
+                </Text>
+                <Text style={[s.nfcInfoBody, { color: colors.textSecondary }]}>
+                  {t("scanner.nfc_unavailable_expo_go_body")}
+                </Text>
+              </View>
+            </ScrollView>
+          )}
+
+          {/* No hardware */}
+          {nfcState !== "checking" && nfcAvailability && !nfcAvailability.available && nfcAvailability.reason === "no_hardware" && (
+            <View style={[s.nfcInfoBox, { backgroundColor: `${colors.textTertiary}12`, borderColor: `${colors.surfaceBorder}` }]}>
+              <Ionicons name="radio-outline" size={36} color={colors.textTertiary} />
+              <Text style={[s.nfcInfoTitle, { color: colors.text }]}>
+                {t("scanner.nfc_unavailable_no_hw")}
+              </Text>
+            </View>
+          )}
+
+          {/* NFC disabled */}
+          {nfcState !== "checking" && nfcAvailability && !nfcAvailability.available && nfcAvailability.reason === "disabled" && (
+            <View style={[s.nfcInfoBox, { backgroundColor: `${colors.warning}12`, borderColor: `${colors.warning}30` }]}>
+              <Ionicons name="radio-outline" size={36} color={colors.warning} />
+              <Text style={[s.nfcInfoTitle, { color: colors.text }]}>
+                {t("scanner.nfc_unavailable_disabled")}
+              </Text>
+            </View>
+          )}
+
+          {/* NFC available — idle / scanning / success / error */}
+          {nfcAvailability?.available && nfcState !== "checking" && (
+            <>
+              {/* NFC icon */}
+              <View
+                style={[
+                  s.nfcIcon,
+                  {
+                    backgroundColor:
+                      nfcState === "scanning"
+                        ? `${colors.accent}22`
+                        : nfcState === "success"
+                        ? `${colors.success}20`
+                        : nfcState === "error"
+                        ? `${colors.error}15`
+                        : `${colors.accent}12`,
+                    borderColor:
+                      nfcState === "scanning"
+                        ? colors.accent
+                        : nfcState === "success"
+                        ? colors.success
+                        : nfcState === "error"
+                        ? colors.error
+                        : colors.surfaceBorder,
+                  },
+                ]}
+              >
+                {nfcState === "scanning" ? (
+                  <ActivityIndicator color={colors.accent} size="large" />
+                ) : (
+                  <Ionicons
+                    name={
+                      nfcState === "success"
+                        ? "checkmark-circle"
+                        : nfcState === "error"
+                        ? "alert-circle"
+                        : "radio-outline"
+                    }
+                    size={56}
+                    color={
+                      nfcState === "success"
+                        ? colors.success
+                        : nfcState === "error"
+                        ? colors.error
+                        : colors.accent
+                    }
+                  />
+                )}
+              </View>
+
+              {/* Status message */}
+              {nfcMessage !== "" && (
+                <Text
+                  style={[
+                    s.nfcStatusText,
+                    {
+                      color:
+                        nfcState === "error"
+                          ? colors.error
+                          : nfcState === "success"
+                          ? colors.success
+                          : colors.textSecondary,
+                    },
+                  ]}
+                >
+                  {nfcMessage}
+                </Text>
+              )}
+
+              {/* Raw data */}
+              {nfcRaw && nfcState !== "scanning" && (
+                <View style={[s.rawCard, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
+                  <Text style={[s.rawLabel, { color: colors.textTertiary }]}>
+                    {t("scanner.nfc_raw_data")}
+                  </Text>
+                  <Text style={[s.rawValue, { color: colors.textSecondary }]} numberOfLines={3}>
+                    {nfcRaw}
+                  </Text>
+                </View>
+              )}
+
+              {/* Action button */}
+              <Pressable
+                style={({ pressed }) => [
+                  s.actionBtn,
+                  {
+                    backgroundColor:
+                      nfcState === "scanning"
+                        ? `${colors.error}30`
+                        : `${colors.accent}22`,
+                    borderColor:
+                      nfcState === "scanning" ? colors.error : colors.accent,
+                  },
+                  pressed && { opacity: 0.75 },
+                ]}
+                onPress={nfcState === "scanning" ? handleNfcScan : () => {
+                  setNfcState("idle");
+                  setNfcMessage("");
+                  setNfcRaw(null);
+                  handleNfcScan();
+                }}
+              >
+                <Ionicons
+                  name={nfcState === "scanning" ? "close-circle-outline" : "radio-outline"}
+                  size={20}
+                  color={nfcState === "scanning" ? colors.error : colors.accent}
+                />
+                <Text
+                  style={[
+                    s.actionBtnText,
+                    { color: nfcState === "scanning" ? colors.error : colors.accent },
+                  ]}
+                >
+                  {nfcState === "scanning"
+                    ? t("scanner.nfc_stop")
+                    : t("scanner.nfc_start_scan")}
+                </Text>
+              </Pressable>
+            </>
           )}
         </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={[s.container]}>
-      {/* Camera fills screen */}
-      <CameraView
-        style={StyleSheet.absoluteFill}
-        barcodeScannerSettings={{ barcodeTypes: ["qr", "ean13", "ean8", "code128", "code39", "upc_a", "upc_e", "datamatrix"] }}
-        onBarcodeScanned={scanned ? undefined : handleBarcode}
-      />
-
-      {/* Overlay UI */}
-      <View style={[s.overlay, { paddingTop: topPad + 8, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 90 }]}>
-        <Text style={s.overlayTitle}>Scanner</Text>
-
-        <View style={s.viewfinder}>
-          <Corner pos="tl" />
-          <Corner pos="tr" />
-          <Corner pos="bl" />
-          <Corner pos="br" />
-          <Text style={s.viewfinderHint}>Align barcode or QR code</Text>
-        </View>
-
-        {lastResult && scanned && (
-          <View style={s.resultCard}>
-            <Text style={s.resultLabel}>Last Scan</Text>
-            <Text style={s.resultValue} numberOfLines={2}>{lastResult}</Text>
-          </View>
-        )}
-
-        <Pressable
-          style={({ pressed }) => [s.resetBtn, pressed && { opacity: 0.8 }]}
-          onPress={() => { setScanned(false); setLastResult(null); }}
-        >
-          <Ionicons name="refresh" size={20} color="#fff" />
-          <Text style={s.resetBtnText}>Scan Again</Text>
-        </Pressable>
       </View>
     </View>
   );
 }
 
+// ─── Corner brackets for QR viewfinder ───────────────────────────────────────
 function Corner({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
   const style: Record<string, number | string> = {
     position: "absolute",
@@ -192,15 +501,7 @@ function Corner({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
   return <View style={style as object} />;
 }
 
-function ActivityLoader({ color }: { color: string }) {
-  return (
-    <View style={{ alignItems: "center", gap: 12 }}>
-      <Ionicons name="scan-outline" size={48} color={color} />
-    </View>
-  );
-}
-
-function makeStyles(colors: typeof Colors.dark) {
+function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -212,7 +513,7 @@ function makeStyles(colors: typeof Colors.dark) {
       letterSpacing: -1,
       paddingHorizontal: 20,
       paddingTop: 16,
-      paddingBottom: 12,
+      paddingBottom: 8,
     },
     centered: {
       flex: 1,
@@ -243,11 +544,39 @@ function makeStyles(colors: typeof Colors.dark) {
       fontSize: 16,
       fontFamily: "Inter_600SemiBold",
     },
+    // Mode switcher
+    modeSwitcher: {
+      flexDirection: "row",
+      alignSelf: "center",
+      borderRadius: 12,
+      padding: 3,
+      gap: 2,
+    },
+    modeBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 9,
+    },
+    modeBtnActive: {
+      backgroundColor: "#00D4AA",
+    },
+    modeBtnText: {
+      fontSize: 13,
+      fontFamily: "Inter_600SemiBold",
+      color: "rgba(255,255,255,0.7)",
+    },
+    modeBtnTextActive: {
+      color: "#000",
+    },
+    // QR overlay
     overlay: {
       flex: 1,
       alignItems: "center",
       paddingHorizontal: 24,
-      gap: 24,
+      gap: 20,
     },
     overlayTitle: {
       fontSize: 24,
@@ -256,12 +585,12 @@ function makeStyles(colors: typeof Colors.dark) {
       alignSelf: "flex-start",
     },
     viewfinder: {
-      width: 240,
-      height: 240,
+      width: 220,
+      height: 220,
       position: "relative",
       alignItems: "center",
       justifyContent: "flex-end",
-      paddingBottom: 12,
+      paddingBottom: 10,
     },
     viewfinderHint: {
       color: "rgba(255,255,255,0.6)",
@@ -288,21 +617,87 @@ function makeStyles(colors: typeof Colors.dark) {
       fontFamily: "Inter_400Regular",
       color: "#fff",
     },
-    resetBtn: {
+    actionBtn: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      backgroundColor: "rgba(0,212,170,0.25)",
       borderRadius: 14,
       paddingHorizontal: 24,
       paddingVertical: 13,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: "#00D4AA",
+      backgroundColor: "rgba(0,212,170,0.15)",
     },
-    resetBtnText: {
+    actionBtnText: {
       color: "#fff",
       fontSize: 15,
       fontFamily: "Inter_600SemiBold",
+    },
+    // NFC mode
+    nfcContainer: {
+      flex: 1,
+      paddingHorizontal: 24,
+      gap: 16,
+    },
+    nfcContent: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 20,
+    },
+    nfcIcon: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      borderWidth: 2,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    nfcStatusText: {
+      fontSize: 16,
+      fontFamily: "Inter_500Medium",
+      textAlign: "center",
+      paddingHorizontal: 32,
+      lineHeight: 24,
+    },
+    nfcInfoCard: {
+      alignItems: "center",
+    },
+    nfcInfoBox: {
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 24,
+      gap: 12,
+      alignItems: "center",
+      maxWidth: 340,
+    },
+    nfcInfoTitle: {
+      fontSize: 17,
+      fontFamily: "Inter_600SemiBold",
+      textAlign: "center",
+    },
+    nfcInfoBody: {
+      fontSize: 14,
+      fontFamily: "Inter_400Regular",
+      textAlign: "center",
+      lineHeight: 22,
+    },
+    rawCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 12,
+      width: "100%",
+      gap: 4,
+    },
+    rawLabel: {
+      fontSize: 10,
+      fontFamily: "Inter_600SemiBold",
+      letterSpacing: 0.8,
+    },
+    rawValue: {
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      lineHeight: 19,
     },
   });
 }

@@ -110,6 +110,7 @@ The app's core data source. Self-hosted on local network.
 | Package | Purpose |
 |---|---|
 | `expo-camera` | Barcode/QR scanning in Scanner tab |
+| `react-native-nfc-manager` | NFC tag reading (Dev Client/EAS build only; graceful fallback in Expo Go and web) |
 | `expo-secure-store` | Secure storage for server URL |
 | `expo-sqlite` | Local SQLite database |
 | `expo-haptics` | Tactile feedback |
