@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Platform,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -36,7 +37,7 @@ export function SpoolCard({
   onToggleFavorite,
   isPending = false,
 }: SpoolCardProps) {
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const { t } = useTranslation();
 
   const filamentColor = getFilamentColor(spool);
@@ -67,10 +68,25 @@ export function SpoolCard({
       ? colors.warning
       : colors.accent;
 
+  const glassBg = isDark ? "rgba(17,24,39,0.65)" : "rgba(255,255,255,0.72)";
+  const glassBorder = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+
   return (
     <Animated.View style={animStyle}>
       <Pressable onPress={handlePress} style={({ pressed }) => [{ opacity: pressed ? 0.95 : 1 }]}>
-        <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
+        <View
+          style={[
+            s.card,
+            {
+              backgroundColor: glassBg,
+              borderColor: glassBorder,
+            },
+            Platform.OS === "web" && {
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+            } as any,
+          ]}
+        >
           <View style={[s.colorBar, { backgroundColor: filamentColor }]} />
           <View style={s.content}>
             <View style={s.topRow}>
@@ -114,7 +130,7 @@ export function SpoolCard({
 
             <View style={s.weightRow}>
               <View style={s.progressWrap}>
-                <View style={[s.progressTrack, { backgroundColor: colors.surfaceElevated }]}>
+                <View style={[s.progressTrack, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }]}>
                   <View
                     style={[
                       s.progressFill,

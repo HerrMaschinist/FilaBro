@@ -1,4 +1,110 @@
 import type { Spool } from "@/lib/spoolman";
+import type {
+  Manufacturer,
+  Filament as DomainFilament,
+} from "@/src/domain/models";
+
+const NOW = Date.now();
+
+export const DEMO_MANUFACTURERS: Manufacturer[] = [
+  {
+    localId: "demo-m1",
+    name: "Prusament",
+    website: "https://prusament.com",
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+  {
+    localId: "demo-m2",
+    name: "eSUN",
+    website: "https://www.esun3d.com",
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+  {
+    localId: "demo-m3",
+    name: "Polymaker",
+    website: "https://polymaker.com",
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+  {
+    localId: "demo-m4",
+    name: "Sunlu",
+    website: "https://www.sunlu.com",
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+];
+
+export const DEMO_FILAMENTS: DomainFilament[] = [
+  {
+    localId: "demo-f1",
+    name: "PLA Basic",
+    material: "PLA",
+    colorHex: "2196F3",
+    manufacturerLocalId: "demo-m1",
+    weight: 1000,
+    spoolWeight: 200,
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+  {
+    localId: "demo-f2",
+    name: "PETG Solid",
+    material: "PETG",
+    colorHex: "FF5722",
+    manufacturerLocalId: "demo-m2",
+    weight: 1000,
+    spoolWeight: 230,
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+  {
+    localId: "demo-f3",
+    name: "ASA UV-Resistant",
+    material: "ASA",
+    colorHex: "212121",
+    manufacturerLocalId: "demo-m3",
+    weight: 750,
+    spoolWeight: 180,
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+  {
+    localId: "demo-f4",
+    name: "TPU 95A Flex",
+    material: "TPU",
+    colorHex: "E91E63",
+    manufacturerLocalId: "demo-m1",
+    weight: 500,
+    spoolWeight: 150,
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+  {
+    localId: "demo-f5",
+    name: "PLA Silk Gold",
+    material: "PLA",
+    colorHex: "FFD700",
+    manufacturerLocalId: "demo-m4",
+    weight: 1000,
+    spoolWeight: 220,
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+  {
+    localId: "demo-f6",
+    name: "ABS Premium",
+    material: "ABS",
+    colorHex: "9C27B0",
+    manufacturerLocalId: "demo-m2",
+    weight: 1000,
+    spoolWeight: 200,
+    syncState: "synced",
+    lastModifiedAt: NOW,
+  },
+];
 
 export const DEMO_SPOOLS: Spool[] = [
   {

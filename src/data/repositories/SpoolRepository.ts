@@ -34,6 +34,9 @@ function toSpool(row: typeof spools.$inferSelect): Spool {
     usedWeight: row.usedWeight ?? undefined,
     comment: row.comment ?? undefined,
     archived: row.archived === 1,
+    displayName: row.displayName ?? undefined,
+    qrCode: row.qrCode ?? undefined,
+    nfcTagId: row.nfcTagId ?? undefined,
     lotNr: row.lotNr ?? undefined,
     lastUsed: row.lastUsed ?? undefined,
     firstUsed: row.firstUsed ?? undefined,
@@ -261,6 +264,52 @@ export const SpoolRepository = {
       .update(spools)
       .set({ syncState: "synced", dirtyFields: null })
       .where(eq(spools.localId, localId));
+  },
+
+  async createLocal(data: {
+    filamentLocalId: string;
+    remainingWeight?: number;
+    initialWeight?: number;
+    spoolWeight?: number;
+    comment?: string;
+    displayName?: string;
+    lotNr?: string;
+    qrCode?: string;
+    nfcTagId?: string;
+  }): Promise<Spool> {
+    const now = Date.now();
+    const localId = generateLocalId();
+    const insert: InsertSpool = {
+      localId,
+      filamentLocalId: data.filamentLocalId,
+      remainingWeight: data.remainingWeight ?? data.initialWeight ?? null,
+      initialWeight: data.initialWeight ?? null,
+      spoolWeight: data.spoolWeight ?? null,
+      usedWeight: 0,
+      comment: data.comment ?? null,
+      archived: 0,
+      displayName: data.displayName ?? null,
+      qrCode: data.qrCode ?? null,
+      nfcTagId: data.nfcTagId ?? null,
+      lotNr: data.lotNr ?? null,
+      firstUsed: null,
+      lastUsed: null,
+      registered: new Date().toISOString(),
+      isFavorite: 0,
+      syncState: "dirty",
+      dirtyFields: null,
+      localVersion: 1,
+      lastModifiedAt: now,
+    };
+    await getDb().insert(spools).values(insert);
+    return toSpool(insert as typeof spools.$inferSelect);
+  },
+
+  async deleteByLocalId(localId: string): Promise<boolean> {
+    await getDb()
+      .delete(spools)
+      .where(eq(spools.localId, localId));
+    return true;
   },
 
   async deleteAll(): Promise<void> {

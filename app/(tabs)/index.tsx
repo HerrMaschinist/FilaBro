@@ -19,6 +19,7 @@ import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { SpoolCard } from "@/components/SpoolCard";
+import { FAB } from "@/components/ui/FAB";
 import { Spool } from "@/lib/spoolman";
 
 type SortKey = "name" | "remaining" | "material" | "vendor";
@@ -48,6 +49,7 @@ export default function SpoolsScreen() {
 
   const [search, setSearch] = useState("");
   const [showFilter, setShowFilter] = useState(false);
+  const [showAddSheet, setShowAddSheet] = useState(false);
   const [filterMaterial, setFilterMaterial] = useState<string | null>(null);
   const [filterFavOnly, setFilterFavOnly] = useState(false);
   const [filterMinWeight, setFilterMinWeight] = useState(0);
@@ -87,8 +89,12 @@ export default function SpoolsScreen() {
       );
     }
     if (filterFavOnly) data = data.filter((s) => favorites.includes(s.id));
-    if (filterMaterial) data = data.filter((s) => s.filament?.material === filterMaterial);
-    if (filterMinWeight > 0) data = data.filter((s) => (s.remaining_weight ?? 0) >= filterMinWeight);
+    if (filterMaterial)
+      data = data.filter((s) => s.filament?.material === filterMaterial);
+    if (filterMinWeight > 0)
+      data = data.filter(
+        (s) => (s.remaining_weight ?? 0) >= filterMinWeight
+      );
 
     data.sort((a, b) => {
       let va = "";
@@ -112,7 +118,16 @@ export default function SpoolsScreen() {
     });
 
     return data;
-  }, [spools, search, filterFavOnly, filterMaterial, filterMinWeight, sortKey, sortDir, favorites]);
+  }, [
+    spools,
+    search,
+    filterFavOnly,
+    filterMaterial,
+    filterMinWeight,
+    sortKey,
+    sortDir,
+    favorites,
+  ]);
 
   const topInset = insets.top + (Platform.OS === "web" ? 67 : 0);
 
@@ -121,7 +136,12 @@ export default function SpoolsScreen() {
       <SpoolCard
         spool={item}
         isFavorite={isFavorite(item.id)}
-        onPress={() => router.push({ pathname: "/spool/[id]", params: { id: String(item.id) } })}
+        onPress={() =>
+          router.push({
+            pathname: "/spool/[id]",
+            params: { id: String(item.id) },
+          })
+        }
         onToggleFavorite={() => toggleFavorite(item.id)}
         isPending={pendingIds.has(item.id)}
       />
@@ -131,11 +151,15 @@ export default function SpoolsScreen() {
 
   const syncStr = lastSync
     ? t("home.synced", {
-        time: new Date(lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        time: new Date(lastSync).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
       })
     : null;
 
-  const showOfflineBadge = connectionStatus === "offline" || connectionStatus === "error";
+  const showOfflineBadge =
+    connectionStatus === "offline" || connectionStatus === "error";
   const showNoServerBadge = connectionStatus === "no_server";
 
   const s = makeStyles(colors);
@@ -146,15 +170,39 @@ export default function SpoolsScreen() {
         <Text style={s.title}>{t("home.title")}</Text>
         <View style={s.headerActions}>
           {showNoServerBadge && (
-            <View style={[s.offlineBadge, { backgroundColor: `${colors.textTertiary}15` }]}>
-              <Ionicons name="cloud-offline-outline" size={14} color={colors.textTertiary} />
-              <Text style={[s.offlineText, { color: colors.textTertiary }]}>{t("home.no_server")}</Text>
+            <View
+              style={[
+                s.offlineBadge,
+                { backgroundColor: `${colors.textTertiary}15` },
+              ]}
+            >
+              <Ionicons
+                name="cloud-offline-outline"
+                size={14}
+                color={colors.textTertiary}
+              />
+              <Text
+                style={[s.offlineText, { color: colors.textTertiary }]}
+              >
+                {t("home.no_server")}
+              </Text>
             </View>
           )}
           {showOfflineBadge && (
-            <View style={[s.offlineBadge, { backgroundColor: `${colors.warning}20` }]}>
-              <Ionicons name="cloud-offline-outline" size={14} color={colors.warning} />
-              <Text style={[s.offlineText, { color: colors.warning }]}>{t("home.offline")}</Text>
+            <View
+              style={[
+                s.offlineBadge,
+                { backgroundColor: `${colors.warning}20` },
+              ]}
+            >
+              <Ionicons
+                name="cloud-offline-outline"
+                size={14}
+                color={colors.warning}
+              />
+              <Text style={[s.offlineText, { color: colors.warning }]}>
+                {t("home.offline")}
+              </Text>
             </View>
           )}
           {pendingUpdates.length > 0 && (
@@ -171,9 +219,16 @@ export default function SpoolsScreen() {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 syncPending();
               }}
-              style={[s.syncBtn, { backgroundColor: `${colors.accent}15` }]}
+              style={[
+                s.syncBtn,
+                { backgroundColor: `${colors.accent}15` },
+              ]}
             >
-              <Ionicons name="cloud-upload-outline" size={16} color={colors.accent} />
+              <Ionicons
+                name="cloud-upload-outline"
+                size={16}
+                color={colors.accent}
+              />
               <Text style={[s.syncBtnText, { color: colors.accent }]}>
                 {pendingUpdates.length}
               </Text>
@@ -186,13 +241,29 @@ export default function SpoolsScreen() {
             }}
             style={s.iconBtn}
           >
-            <Ionicons name="options-outline" size={22} color={colors.textSecondary} />
+            <Ionicons
+              name="options-outline"
+              size={22}
+              color={colors.textSecondary}
+            />
           </Pressable>
         </View>
       </View>
 
-      <View style={[s.searchRow, { backgroundColor: colors.surfaceElevated, borderColor: colors.surfaceBorder }]}>
-        <Ionicons name="search-outline" size={18} color={colors.textTertiary} />
+      <View
+        style={[
+          s.searchRow,
+          {
+            backgroundColor: colors.surfaceElevated,
+            borderColor: colors.surfaceBorder,
+          },
+        ]}
+      >
+        <Ionicons
+          name="search-outline"
+          size={18}
+          color={colors.textTertiary}
+        />
         <TextInput
           style={[s.searchInput, { color: colors.text }]}
           value={search}
@@ -203,7 +274,11 @@ export default function SpoolsScreen() {
         />
         {search.length > 0 && (
           <Pressable onPress={() => setSearch("")} hitSlop={8}>
-            <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+            <Ionicons
+              name="close-circle"
+              size={18}
+              color={colors.textTertiary}
+            />
           </Pressable>
         )}
       </View>
@@ -215,49 +290,83 @@ export default function SpoolsScreen() {
         </Text>
       )}
 
-      {/* No server empty state */}
-      {connectionStatus === "no_server" && spools.length === 0 && !isSpoolsLoading && (
-        <View style={s.centered}>
-          <Ionicons name="server-outline" size={48} color={colors.textTertiary} />
-          <Text style={[s.emptyTitle, { color: colors.text }]}>{t("home.no_server_title")}</Text>
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>{t("home.no_server_sub")}</Text>
-          <Pressable
-            style={[s.retryBtn, { backgroundColor: colors.accent }]}
-            onPress={() => router.push("/(tabs)/settings")}
-          >
-            <Text style={s.retryBtnText}>{t("home.go_to_settings")}</Text>
-          </Pressable>
-        </View>
-      )}
+      {connectionStatus === "no_server" &&
+        spools.length === 0 &&
+        !isSpoolsLoading && (
+          <View style={s.centered}>
+            <Ionicons
+              name="server-outline"
+              size={48}
+              color={colors.textTertiary}
+            />
+            <Text style={[s.emptyTitle, { color: colors.text }]}>
+              {t("home.no_server_title")}
+            </Text>
+            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
+              {t("home.no_server_sub")}
+            </Text>
+            <Pressable
+              style={[s.retryBtn, { backgroundColor: colors.accent }]}
+              onPress={() => router.push("/(tabs)/settings")}
+            >
+              <Text style={s.retryBtnText}>
+                {t("home.go_to_settings")}
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
-      {/* Server error empty state */}
-      {spoolsError && spools.length === 0 && connectionStatus !== "no_server" && (
-        <View style={s.centered}>
-          <Ionicons name="wifi-outline" size={48} color={colors.textTertiary} />
-          <Text style={[s.emptyTitle, { color: colors.text }]}>{t("home.error_title")}</Text>
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>{spoolsError}</Text>
-          <Pressable style={[s.retryBtn, { backgroundColor: colors.accent }]} onPress={refreshSpools}>
-            <Text style={s.retryBtnText}>{t("home.retry")}</Text>
-          </Pressable>
-        </View>
-      )}
+      {spoolsError &&
+        spools.length === 0 &&
+        connectionStatus !== "no_server" && (
+          <View style={s.centered}>
+            <Ionicons
+              name="wifi-outline"
+              size={48}
+              color={colors.textTertiary}
+            />
+            <Text style={[s.emptyTitle, { color: colors.text }]}>
+              {t("home.error_title")}
+            </Text>
+            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
+              {spoolsError}
+            </Text>
+            <Pressable
+              style={[s.retryBtn, { backgroundColor: colors.accent }]}
+              onPress={refreshSpools}
+            >
+              <Text style={s.retryBtnText}>{t("home.retry")}</Text>
+            </Pressable>
+          </View>
+        )}
 
-      {/* Loading */}
       {!spoolsError && spools.length === 0 && isSpoolsLoading && (
         <View style={s.centered}>
           <ActivityIndicator color={colors.accent} size="large" />
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>{t("home.loading")}</Text>
+          <Text style={[s.emptyText, { color: colors.textSecondary }]}>
+            {t("home.loading")}
+          </Text>
         </View>
       )}
 
-      {/* Empty after sync */}
-      {!spoolsError && spools.length === 0 && !isSpoolsLoading && connectionStatus !== "no_server" && (
-        <View style={s.centered}>
-          <Ionicons name="layers-outline" size={56} color={colors.textTertiary} />
-          <Text style={[s.emptyTitle, { color: colors.text }]}>{t("home.no_spools_title")}</Text>
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>{t("home.no_spools_sub")}</Text>
-        </View>
-      )}
+      {!spoolsError &&
+        spools.length === 0 &&
+        !isSpoolsLoading &&
+        connectionStatus !== "no_server" && (
+          <View style={s.centered}>
+            <Ionicons
+              name="layers-outline"
+              size={56}
+              color={colors.textTertiary}
+            />
+            <Text style={[s.emptyTitle, { color: colors.text }]}>
+              {t("home.no_spools_title")}
+            </Text>
+            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
+              {t("home.no_spools_sub")}
+            </Text>
+          </View>
+        )}
 
       <FlatList
         data={filtered}
@@ -265,7 +374,10 @@ export default function SpoolsScreen() {
         renderItem={renderItem}
         contentContainerStyle={[
           s.list,
-          { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 90 },
+          {
+            paddingBottom:
+              insets.bottom + (Platform.OS === "web" ? 34 : 0) + 90,
+          },
         ]}
         scrollEnabled={!!filtered.length}
         refreshControl={
@@ -278,6 +390,18 @@ export default function SpoolsScreen() {
         }
         ListEmptyComponent={null}
         showsVerticalScrollIndicator={false}
+      />
+
+      <FAB
+        onPress={() => setShowAddSheet(true)}
+        icon="add"
+        testID="fab-add"
+      />
+
+      <AddSheet
+        visible={showAddSheet}
+        onClose={() => setShowAddSheet(false)}
+        colors={colors}
       />
 
       <FilterModal
@@ -298,6 +422,150 @@ export default function SpoolsScreen() {
     </View>
   );
 }
+
+function AddSheet({
+  visible,
+  onClose,
+  colors,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  colors: typeof import("@/constants/colors").default.dark;
+}) {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+
+  const options = [
+    {
+      key: "spool",
+      icon: "layers-outline" as const,
+      label: t("catalog.new_spool"),
+      route: "/add-spool",
+    },
+    {
+      key: "filament",
+      icon: "color-fill-outline" as const,
+      label: t("catalog.new_filament"),
+      route: "/add-filament",
+    },
+    {
+      key: "manufacturer",
+      icon: "business-outline" as const,
+      label: t("catalog.new_manufacturer"),
+      route: "/add-manufacturer",
+    },
+  ];
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <Pressable style={addStyles.overlay} onPress={onClose}>
+        <View
+          style={[
+            addStyles.sheet,
+            {
+              backgroundColor: colors.surface,
+              paddingBottom: insets.bottom + 16,
+            },
+          ]}
+        >
+          <View
+            style={[
+              addStyles.handle,
+              { backgroundColor: colors.surfaceBorder },
+            ]}
+          />
+          <Text style={[addStyles.sheetTitle, { color: colors.text }]}>
+            {t("catalog.what_to_add")}
+          </Text>
+
+          {options.map((opt) => (
+            <Pressable
+              key={opt.key}
+              style={[
+                addStyles.option,
+                { backgroundColor: colors.surfaceElevated },
+              ]}
+              onPress={() => {
+                onClose();
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setTimeout(() => router.push(opt.route as any), 200);
+              }}
+              testID={`add-${opt.key}`}
+            >
+              <View
+                style={[
+                  addStyles.optionIcon,
+                  { backgroundColor: `${colors.accent}15` },
+                ]}
+              >
+                <Ionicons name={opt.icon} size={22} color={colors.accent} />
+              </View>
+              <Text style={[addStyles.optionText, { color: colors.text }]}>
+                {opt.label}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={colors.textTertiary}
+              />
+            </Pressable>
+          ))}
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const addStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    fontSize: 20,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 16,
+  },
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 8,
+    gap: 14,
+  },
+  optionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionText: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+  },
+});
 
 interface FilterModalProps {
   visible: boolean;
@@ -343,26 +611,58 @@ function FilterModal({
   const weightOptions = [0, 50, 100, 200, 500];
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
       <View style={s.modalOverlay}>
-        <View style={[s.sheet, { backgroundColor: colors.surface, paddingBottom: insets.bottom + 16 }]}>
-          <View style={[s.sheetHandle, { backgroundColor: colors.surfaceBorder }]} />
+        <View
+          style={[
+            s.sheet,
+            {
+              backgroundColor: colors.surface,
+              paddingBottom: insets.bottom + 16,
+            },
+          ]}
+        >
+          <View
+            style={[
+              s.sheetHandle,
+              { backgroundColor: colors.surfaceBorder },
+            ]}
+          />
           <View style={s.sheetHeader}>
-            <Text style={[s.sheetTitle, { color: colors.text }]}>{t("home.filter_sort")}</Text>
+            <Text style={[s.sheetTitle, { color: colors.text }]}>
+              {t("home.filter_sort")}
+            </Text>
             <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={24} color={colors.textSecondary} />
+              <Ionicons
+                name="close"
+                size={24}
+                color={colors.textSecondary}
+              />
             </Pressable>
           </View>
 
-          <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>{t("home.sort_by")}</Text>
+          <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>
+            {t("home.sort_by")}
+          </Text>
           <View style={s.chipRow}>
             {sortOptions.map((opt) => (
               <Pressable
                 key={opt.key}
                 style={[
                   s.chip,
-                  { borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceElevated },
-                  sortKey === opt.key && { backgroundColor: `${colors.accent}20`, borderColor: colors.accent },
+                  {
+                    borderColor: colors.surfaceBorder,
+                    backgroundColor: colors.surfaceElevated,
+                  },
+                  sortKey === opt.key && {
+                    backgroundColor: `${colors.accent}20`,
+                    borderColor: colors.accent,
+                  },
                 ]}
                 onPress={() => {
                   if (sortKey === opt.key) {
@@ -374,27 +674,61 @@ function FilterModal({
                   Haptics.selectionAsync();
                 }}
               >
-                <Text style={[s.chipText, { color: sortKey === opt.key ? colors.accent : colors.textSecondary }]}>
+                <Text
+                  style={[
+                    s.chipText,
+                    {
+                      color:
+                        sortKey === opt.key
+                          ? colors.accent
+                          : colors.textSecondary,
+                    },
+                  ]}
+                >
                   {opt.label}
                 </Text>
                 {sortKey === opt.key && (
-                  <Ionicons name={sortDir === "asc" ? "arrow-up" : "arrow-down"} size={12} color={colors.accent} />
+                  <Ionicons
+                    name={sortDir === "asc" ? "arrow-up" : "arrow-down"}
+                    size={12}
+                    color={colors.accent}
+                  />
                 )}
               </Pressable>
             ))}
           </View>
 
-          <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>{t("home.material")}</Text>
+          <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>
+            {t("home.material")}
+          </Text>
           <View style={s.chipRow}>
             <Pressable
               style={[
                 s.chip,
-                { borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceElevated },
-                !filterMaterial && { backgroundColor: `${colors.accent}20`, borderColor: colors.accent },
+                {
+                  borderColor: colors.surfaceBorder,
+                  backgroundColor: colors.surfaceElevated,
+                },
+                !filterMaterial && {
+                  backgroundColor: `${colors.accent}20`,
+                  borderColor: colors.accent,
+                },
               ]}
-              onPress={() => { setFilterMaterial(null); Haptics.selectionAsync(); }}
+              onPress={() => {
+                setFilterMaterial(null);
+                Haptics.selectionAsync();
+              }}
             >
-              <Text style={[s.chipText, { color: !filterMaterial ? colors.accent : colors.textSecondary }]}>
+              <Text
+                style={[
+                  s.chipText,
+                  {
+                    color: !filterMaterial
+                      ? colors.accent
+                      : colors.textSecondary,
+                  },
+                ]}
+              >
                 {t("home.all")}
               </Text>
             </Pressable>
@@ -403,31 +737,71 @@ function FilterModal({
                 key={m}
                 style={[
                   s.chip,
-                  { borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceElevated },
-                  filterMaterial === m && { backgroundColor: `${colors.accent}20`, borderColor: colors.accent },
+                  {
+                    borderColor: colors.surfaceBorder,
+                    backgroundColor: colors.surfaceElevated,
+                  },
+                  filterMaterial === m && {
+                    backgroundColor: `${colors.accent}20`,
+                    borderColor: colors.accent,
+                  },
                 ]}
-                onPress={() => { setFilterMaterial(m); Haptics.selectionAsync(); }}
+                onPress={() => {
+                  setFilterMaterial(m);
+                  Haptics.selectionAsync();
+                }}
               >
-                <Text style={[s.chipText, { color: filterMaterial === m ? colors.accent : colors.textSecondary }]}>
+                <Text
+                  style={[
+                    s.chipText,
+                    {
+                      color:
+                        filterMaterial === m
+                          ? colors.accent
+                          : colors.textSecondary,
+                    },
+                  ]}
+                >
                   {m}
                 </Text>
               </Pressable>
             ))}
           </View>
 
-          <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>{t("home.min_remaining")}</Text>
+          <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>
+            {t("home.min_remaining")}
+          </Text>
           <View style={s.chipRow}>
             {weightOptions.map((w) => (
               <Pressable
                 key={w}
                 style={[
                   s.chip,
-                  { borderColor: colors.surfaceBorder, backgroundColor: colors.surfaceElevated },
-                  filterMinWeight === w && { backgroundColor: `${colors.accent}20`, borderColor: colors.accent },
+                  {
+                    borderColor: colors.surfaceBorder,
+                    backgroundColor: colors.surfaceElevated,
+                  },
+                  filterMinWeight === w && {
+                    backgroundColor: `${colors.accent}20`,
+                    borderColor: colors.accent,
+                  },
                 ]}
-                onPress={() => { setFilterMinWeight(w); Haptics.selectionAsync(); }}
+                onPress={() => {
+                  setFilterMinWeight(w);
+                  Haptics.selectionAsync();
+                }}
               >
-                <Text style={[s.chipText, { color: filterMinWeight === w ? colors.accent : colors.textSecondary }]}>
+                <Text
+                  style={[
+                    s.chipText,
+                    {
+                      color:
+                        filterMinWeight === w
+                          ? colors.accent
+                          : colors.textSecondary,
+                    },
+                  ]}
+                >
                   {w === 0 ? t("home.any") : `${w}g`}
                 </Text>
               </Pressable>
@@ -435,16 +809,33 @@ function FilterModal({
           </View>
 
           <View style={s.toggleRow}>
-            <Text style={[s.toggleLabel, { color: colors.text }]}>{t("home.favorites_only")}</Text>
+            <Text style={[s.toggleLabel, { color: colors.text }]}>
+              {t("home.favorites_only")}
+            </Text>
             <Pressable
-              style={[s.toggle, { backgroundColor: filterFavOnly ? colors.accent : colors.surfaceElevated }]}
-              onPress={() => { setFilterFavOnly(!filterFavOnly); Haptics.selectionAsync(); }}
+              style={[
+                s.toggle,
+                {
+                  backgroundColor: filterFavOnly
+                    ? colors.accent
+                    : colors.surfaceElevated,
+                },
+              ]}
+              onPress={() => {
+                setFilterFavOnly(!filterFavOnly);
+                Haptics.selectionAsync();
+              }}
             >
-              <View style={[s.toggleKnob, filterFavOnly && s.toggleKnobOn]} />
+              <View
+                style={[s.toggleKnob, filterFavOnly && s.toggleKnobOn]}
+              />
             </Pressable>
           </View>
 
-          <Pressable style={[s.applyBtn, { backgroundColor: colors.accent }]} onPress={onClose}>
+          <Pressable
+            style={[s.applyBtn, { backgroundColor: colors.accent }]}
+            onPress={onClose}
+          >
             <Text style={s.applyBtnText}>{t("home.apply")}</Text>
           </Pressable>
         </View>

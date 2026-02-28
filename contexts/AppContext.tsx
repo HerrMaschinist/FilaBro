@@ -1,14 +1,3 @@
-/**
- * AppContext — UI-facing state boundary.
- *
- * Internally uses:
- *   SpoolRepository + SyncService  → data and sync
- *   lib/storage                    → settings (server URL, theme, language, etc.)
- *
- * Screens NEVER call SpoolmanClient or SpoolRepository directly.
- * All reads go through this context.
- * All writes go through this context.
- */
 import React, {
   createContext,
   useContext,
@@ -35,15 +24,23 @@ import {
   setLanguage as persistLanguage,
 } from "@/lib/storage";
 import type { Spool } from "@/lib/spoolman";
-import type { SpoolView } from "@/src/domain/models";
+import type {
+  SpoolView,
+  Manufacturer,
+  Filament as DomainFilament,
+} from "@/src/domain/models";
 import { SpoolRepository } from "@/src/data/repositories/SpoolRepository";
 import * as SyncService from "@/src/data/sync/SyncService";
 import { isPersistenceEnabled } from "@/src/data/db/client";
+import { CatalogService } from "@/src/features/catalog/CatalogService";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
-import { DEMO_SPOOLS } from "@/src/data/demo/demoData";
+import {
+  DEMO_SPOOLS,
+  DEMO_MANUFACTURERS,
+  DEMO_FILAMENTS,
+} from "@/src/data/demo/demoData";
 
-// ─── Compatibility mapping ────────────────────────────────────────────────────
 function toViewSpool(sv: SpoolView): Spool {
   const filament: Spool["filament"] = sv.filament
     ? {
@@ -52,7 +49,10 @@ function toViewSpool(sv: SpoolView): Spool {
         material: sv.filament.material,
         color_hex: sv.filament.colorHex,
         vendor: sv.filament.manufacturer
-          ? { id: sv.filament.manufacturer.remoteId ?? 0, name: sv.filament.manufacturer.name }
+          ? {
+              id: sv.filament.manufacturer.remoteId ?? 0,
+              name: sv.filament.manufacturer.name,
+            }
           : undefined,
         weight: sv.filament.weight,
         spool_weight: sv.filament.spoolWeight,
@@ -78,7 +78,6 @@ function toViewSpool(sv: SpoolView): Spool {
   };
 }
 
-// ─── PendingUpdate (kept for screen backward compat) ─────────────────────────
 export interface PendingUpdate {
   id: string;
   spoolId: number;
@@ -88,7 +87,32 @@ export interface PendingUpdate {
 
 export type ConnectionStatus = "connected" | "offline" | "no_server" | "error";
 
-// ─── Context interface ────────────────────────────────────────────────────────
+interface CreateManufacturerData {
+  name: string;
+  website?: string;
+  comment?: string;
+}
+
+interface CreateFilamentData {
+  name: string;
+  material: string;
+  colorHex?: string;
+  manufacturerLocalId?: string;
+  weight?: number;
+  spoolWeight?: number;
+  comment?: string;
+}
+
+interface CreateSpoolData {
+  filamentLocalId: string;
+  remainingWeight?: number;
+  initialWeight?: number;
+  spoolWeight?: number;
+  comment?: string;
+  displayName?: string;
+  lotNr?: string;
+}
+
 interface AppContextValue {
   serverUrl: string;
   isOnboarded: boolean;
@@ -126,9 +150,29 @@ interface AppContextValue {
   setLanguage: (lang: string) => Promise<void>;
 
   persistenceEnabled: boolean;
+
+  manufacturers: Manufacturer[];
+  filaments: DomainFilament[];
+  createManufacturer: (
+    data: CreateManufacturerData
+  ) => Promise<Manufacturer | null>;
+  createFilament: (
+    data: CreateFilamentData
+  ) => Promise<DomainFilament | null>;
+  createSpool: (data: CreateSpoolData) => Promise<boolean>;
+  deleteManufacturer: (localId: string) => Promise<boolean>;
+  deleteFilament: (localId: string) => Promise<boolean>;
+  deleteSpool: (localId: string) => Promise<boolean>;
+  reloadCatalog: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
+
+function generateLocalId(): string {
+  return (
+    Date.now().toString(36) + Math.random().toString(36).substring(2, 9)
+  );
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [serverUrl, setServerUrlState] = useState("");
@@ -145,18 +189,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState("en");
   const [dirtySpoolIds, setDirtySpoolIds] = useState<Set<number>>(new Set());
 
-  // ─── Startup: load settings + local DB snapshot ───────────────────────────
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [filaments, setFilaments] = useState<DomainFilament[]>([]);
+
   useEffect(() => {
     (async () => {
       try {
-        const [url, onboarded, lastSyncTs, thm, wmode, lang] = await Promise.all([
-          getServerUrl(),
-          getIsOnboarded(),
-          getLastSync(),
-          getTheme(),
-          getDefaultWeightMode(),
-          getLanguage(),
-        ]);
+        const [url, onboarded, lastSyncTs, thm, wmode, lang] =
+          await Promise.all([
+            getServerUrl(),
+            getIsOnboarded(),
+            getLastSync(),
+            getTheme(),
+            getDefaultWeightMode(),
+            getLanguage(),
+          ]);
 
         const resolvedUrl = url ?? "";
         setServerUrlState(resolvedUrl);
@@ -170,10 +217,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
           i18n.changeLanguage(lang);
         }
 
-        if (onboarded && isPersistenceEnabled) {
-          const local = await SyncService.getLocalSpools();
-          setSpools(local.map(toViewSpool));
-        } else if (!isPersistenceEnabled) {
+        if (isPersistenceEnabled) {
+          const [mfrs, fils] = await Promise.all([
+            CatalogService.loadManufacturers(),
+            CatalogService.loadFilaments(),
+          ]);
+          setManufacturers(mfrs);
+          setFilaments(fils);
+
+          if (onboarded) {
+            const local = await SyncService.getLocalSpools();
+            setSpools(local.map(toViewSpool));
+          }
+        } else {
+          setManufacturers(DEMO_MANUFACTURERS);
+          setFilaments(DEMO_FILAMENTS);
           setSpools(DEMO_SPOOLS);
         }
       } finally {
@@ -182,7 +240,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  // ─── Settings ─────────────────────────────────────────────────────────────
   const setServerUrl = useCallback(async (url: string) => {
     await persistServerUrl(url);
     setServerUrlState(url);
@@ -208,7 +265,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await i18n.changeLanguage(lang);
   }, []);
 
-  // ─── Connection status (derived) ──────────────────────────────────────────
   const connectionStatus = useMemo<ConnectionStatus>(() => {
     if (!serverUrl) return "no_server";
     if (isOnline) return "connected";
@@ -218,7 +274,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const isConnected = connectionStatus === "connected";
 
-  // ─── Sync: push then pull, reload from DB ─────────────────────────────────
+  const reloadLocalSpools = useCallback(async () => {
+    if (!isPersistenceEnabled) return;
+    const local = await SyncService.getLocalSpools();
+    setSpools(local.map(toViewSpool));
+  }, []);
+
   const refreshSpools = useCallback(async () => {
     if (!serverUrl) return;
 
@@ -237,7 +298,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const local = await SyncService.getLocalSpools();
       setSpools(local.map(toViewSpool));
 
-      if (result.errors.length > 0 && result.pulled === 0 && local.length === 0) {
+      if (
+        result.errors.length > 0 &&
+        result.pulled === 0 &&
+        local.length === 0
+      ) {
         setSpoolsError(result.errors[0]);
         setIsOnline(false);
       } else {
@@ -257,7 +322,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [serverUrl]);
 
-  // ─── Favorites (DB-backed, local-only) ───────────────────────────────────
   const favorites = useMemo(
     () => spools.filter((s) => s._isFavorite).map((s) => s.id),
     [spools]
@@ -281,7 +345,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (isPersistenceEnabled && spool._localId) {
         SpoolRepository.setFavorite(spool._localId, next).catch(() => {
           setSpools((prev) =>
-            prev.map((s) => (s.id === id ? { ...s, _isFavorite: !next } : s))
+            prev.map((s) =>
+              s.id === id ? { ...s, _isFavorite: !next } : s
+            )
           );
         });
       }
@@ -289,7 +355,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [spools]
   );
 
-  // ─── Weight update (DB → mark dirty → background push) ──────────────────
   const updateWeight = useCallback(
     async (spoolId: number, weight: number) => {
       const spool = spools.find((s) => s.id === spoolId);
@@ -338,7 +403,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [spools, serverUrl]
   );
 
-  // ─── Sync pending dirty records ───────────────────────────────────────────
   const syncPending = useCallback(async () => {
     if (!serverUrl) return;
     try {
@@ -364,7 +428,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [spools, dirtySpoolIds]
   );
 
-  // ─── Theme / weight mode ──────────────────────────────────────────────────
   const setTheme = useCallback((t: string) => {
     setThemeState(t);
     persistTheme(t);
@@ -375,7 +438,180 @@ export function AppProvider({ children }: { children: ReactNode }) {
     persistWeightMode(m);
   }, []);
 
-  // ─── Context value ────────────────────────────────────────────────────────
+  const reloadCatalog = useCallback(async () => {
+    if (!isPersistenceEnabled) return;
+    const [mfrs, fils] = await Promise.all([
+      CatalogService.loadManufacturers(),
+      CatalogService.loadFilaments(),
+    ]);
+    setManufacturers(mfrs);
+    setFilaments(fils);
+  }, []);
+
+  const createManufacturer = useCallback(
+    async (data: CreateManufacturerData): Promise<Manufacturer | null> => {
+      if (!isPersistenceEnabled) {
+        const m: Manufacturer = {
+          localId: generateLocalId(),
+          name: data.name,
+          website: data.website,
+          comment: data.comment,
+          syncState: "dirty",
+          lastModifiedAt: Date.now(),
+        };
+        setManufacturers((prev) => [...prev, m]);
+        return m;
+      }
+      try {
+        const m = await CatalogService.createManufacturer(data);
+        setManufacturers((prev) => [...prev, m]);
+        return m;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const createFilament = useCallback(
+    async (data: CreateFilamentData): Promise<DomainFilament | null> => {
+      if (!isPersistenceEnabled) {
+        const f: DomainFilament = {
+          localId: generateLocalId(),
+          name: data.name,
+          material: data.material,
+          colorHex: data.colorHex,
+          manufacturerLocalId: data.manufacturerLocalId,
+          weight: data.weight,
+          spoolWeight: data.spoolWeight,
+          comment: data.comment,
+          syncState: "dirty",
+          lastModifiedAt: Date.now(),
+        };
+        setFilaments((prev) => [...prev, f]);
+        return f;
+      }
+      try {
+        const f = await CatalogService.createFilament(data);
+        setFilaments((prev) => [...prev, f]);
+        return f;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const createSpool = useCallback(
+    async (data: CreateSpoolData): Promise<boolean> => {
+      if (!isPersistenceEnabled) {
+        const fil = filaments.find(
+          (f) => f.localId === data.filamentLocalId
+        );
+        const mfr = fil?.manufacturerLocalId
+          ? manufacturers.find(
+              (m) => m.localId === fil.manufacturerLocalId
+            )
+          : undefined;
+        const uid = generateLocalId();
+        const numericId =
+          Date.now() + Math.floor(Math.random() * 10000);
+        const newSpool: Spool = {
+          id: numericId,
+          filament: {
+            id: 0,
+            name: fil?.name ?? "Unknown",
+            material: fil?.material ?? "Unknown",
+            color_hex: fil?.colorHex,
+            vendor: mfr ? { id: 0, name: mfr.name } : undefined,
+            weight: fil?.weight,
+            spool_weight: fil?.spoolWeight,
+          },
+          remaining_weight:
+            data.initialWeight ?? data.remainingWeight ?? 1000,
+          initial_weight: data.initialWeight ?? 1000,
+          spool_weight: data.spoolWeight,
+          comment: data.comment,
+          lot_nr: data.lotNr,
+          registered: new Date().toISOString(),
+          _localId: `web-${uid}`,
+          _isFavorite: false,
+        };
+        setSpools((prev) => [...prev, newSpool]);
+        return true;
+      }
+      try {
+        await CatalogService.createSpool(data);
+        await reloadLocalSpools();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [filaments, manufacturers, reloadLocalSpools]
+  );
+
+  const deleteManufacturer = useCallback(
+    async (localId: string): Promise<boolean> => {
+      if (!isPersistenceEnabled) {
+        setManufacturers((prev) =>
+          prev.filter((m) => m.localId !== localId)
+        );
+        return true;
+      }
+      try {
+        await CatalogService.deleteManufacturer(localId);
+        setManufacturers((prev) =>
+          prev.filter((m) => m.localId !== localId)
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    []
+  );
+
+  const deleteFilament = useCallback(
+    async (localId: string): Promise<boolean> => {
+      if (!isPersistenceEnabled) {
+        setFilaments((prev) =>
+          prev.filter((f) => f.localId !== localId)
+        );
+        return true;
+      }
+      try {
+        await CatalogService.deleteFilament(localId);
+        setFilaments((prev) =>
+          prev.filter((f) => f.localId !== localId)
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    []
+  );
+
+  const deleteSpool = useCallback(
+    async (localId: string): Promise<boolean> => {
+      if (!isPersistenceEnabled) {
+        setSpools((prev) =>
+          prev.filter((s) => s._localId !== localId)
+        );
+        return true;
+      }
+      try {
+        await CatalogService.deleteSpool(localId);
+        await reloadLocalSpools();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [reloadLocalSpools]
+  );
+
   const value = useMemo<AppContextValue>(
     () => ({
       serverUrl,
@@ -405,6 +641,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       language,
       setLanguage,
       persistenceEnabled: isPersistenceEnabled,
+      manufacturers,
+      filaments,
+      createManufacturer,
+      createFilament,
+      createSpool,
+      deleteManufacturer,
+      deleteFilament,
+      deleteSpool,
+      reloadCatalog,
     }),
     [
       serverUrl,
@@ -433,6 +678,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDefaultWeightMode,
       language,
       setLanguage,
+      manufacturers,
+      filaments,
+      createManufacturer,
+      createFilament,
+      createSpool,
+      deleteManufacturer,
+      deleteFilament,
+      deleteSpool,
+      reloadCatalog,
     ]
   );
 
@@ -445,11 +699,6 @@ export function useApp() {
   return ctx;
 }
 
-/**
- * Returns the correct color palette and isDark flag based on the user's
- * stored theme preference (auto/light/dark) combined with the system color scheme.
- * Use this in every screen instead of calling useColorScheme() directly.
- */
 export function useAppTheme() {
   const { theme } = useApp();
   const systemColorScheme = useColorScheme();

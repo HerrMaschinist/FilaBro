@@ -51,6 +51,27 @@ function RootLayoutNav() {
           headerShown: true,
         }}
       />
+      <Stack.Screen
+        name="add-manufacturer"
+        options={{
+          presentation: "modal",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="add-filament"
+        options={{
+          presentation: "modal",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="add-spool"
+        options={{
+          presentation: "modal",
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }
