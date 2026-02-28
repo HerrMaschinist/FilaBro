@@ -1,0 +1,244 @@
+# Prompt für Replit Agent oder Gemini Agent
+## Projekt: FilaBro Mobile App für Android und später iOS
+Du bist ein AI Entwicklungsagent für mobile Apps. Du baust eine echte Mobile App, keine Web App. Ziel ist eine moderne, stabile, gut strukturierte App, die ich später in Android Studio als natives Build ausführen kann. Nutze stabile Versionen der Tools und Libraries, nicht veraltet, aber auch nicht experimentell oder nightly.
+
+Wichtig
+1. Kein Kopieren von fremdem proprietärem Code.
+2. Keine UI Kopie von Marken Apps, aber moderne Standards sind erlaubt.
+3. Saubere modulare Architektur, damit ich später Features ergänzen kann.
+4. Keine Halluzinationen bei API Endpunkten. Nur die hier genannten Endpunkte nutzen.
+5. Fokus auf stabile Umsetzung, klare Ordnerstruktur, möglichst wenige Build Probleme.
+
+## Ziel und Nutzen der App
+FilaBro ist eine App zur Verwaltung von 3D Druck Filamentspulen. Die App verbindet sich mit einem Spoolman Server in meinem Netzwerk und zeigt Spulen, Filamente, Hersteller, Restgewicht und Favoriten. Kernnutzen ist schnelles Finden und Aktualisieren von Spulen per Barcode, QR Code, NFC und OCR, plus Offline Nutzung über lokalen Cache.
+
+## Zielgruppe
+Ich und meine Freunde, die 3D Druck betreiben. Es muss sich wie ein richtiges Produkt anfühlen. Modern, schnell, stabil, übersichtlich.
+
+## Spoolman Server und API
+Standard Server URL ist:
+http://192.168.50.10:7912
+
+Health Check:
+GET /api/v1/health
+
+Spulen Liste:
+GET /api/v1/spool mit expandierten Filament Daten
+Wenn expand Query Parameter unterstützt wird, nutze:
+?expand[]=filament
+
+Spule Details:
+GET /api/v1/spool/{id}
+
+Spule aktualisieren:
+PATCH /api/v1/spool/{id}
+Beispiel Feld:
+remaining_weight
+
+Wichtig: Die App muss HTTP im lokalen Netzwerk unterstützen. Setze Cleartext HTTP in Android Konfiguration korrekt um.
+
+## Tech Stack und Rahmen
+Du baust die App als Expo React Native Mobile App, damit sie schnell testbar ist, aber so strukturiert, dass ich später jederzeit auf ein natives Setup wechseln oder ein Custom Dev Client bauen kann.
+
+Anforderungen an Technik
+1. TypeScript verwenden.
+2. React Navigation für Navigation.
+3. State Management stabil und simpel, zum Beispiel Zustand oder Redux Toolkit.
+4. Networking über eine stabile Lösung, zum Beispiel fetch plus TanStack Query für Cache und Requests.
+5. Lokale Datenbank: SQLite in Expo, mit sauberem Schema und Migrationen.
+6. Secure Storage: sensible Settings wie Server URL sicher speichern.
+7. Hintergrund Sync: Änderungen in Queue speichern und später synchronisieren.
+
+Wichtig: Barcode, Kamera, NFC und OCR sind Pflicht Features.
+Wenn bestimmte Features nicht in Expo Go laufen, dann implementiere es so, dass ein Custom Dev Client oder Prebuild möglich ist. Ziel ist, dass es später auf einem echten Android Gerät zuverlässig läuft.
+
+## Architektur und Projektstruktur
+Baue es modular. Trenne klar in Schichten und Feature Module.
+
+Ordnerstruktur Beispiel
+src
+  core
+    api
+    db
+    sync
+    storage
+    ui
+    utils
+  features
+    onboarding
+    spools
+    favorites
+    scanner
+    spool_detail
+    settings
+    widget
+  navigation
+  app
+
+Regeln
+1. Jede Feature Domain hat eigene Screens, ViewModels oder Controller Logik, und eigene Datenzugriffe über Repositories.
+2. API Layer ist getrennt von UI.
+3. Datenbank Entities und Migrations sind sauber versioniert.
+4. Sync Engine ist zentral und testbar.
+
+## UI und Design Anforderungen
+Die UI soll modern wirken, vergleichbar mit zeitgemäßen Apps. Orientierung ist Windows 11 Stil vom Gefühl her: klar, ruhig, viel Weißraum, gute Typografie, saubere Karten, klare Icons, flüssige Übergänge. Keine altbackene Oberfläche. Keine Textwüsten.
+
+Design Vorgaben
+1. Material 3 Look and Feel, moderne Komponenten.
+2. Dynamische Farben wenn möglich, sonst ein ruhiges Theme.
+3. Dark Mode und Light Mode.
+4. Große klickbare Flächen, klare Hierarchie.
+5. Top App Bar mit Kontext Aktionen.
+6. Bottom Navigation mit vier Hauptbereichen.
+7. Ladezustände, leere Zustände, Fehlerzustände professionell gestalten.
+8. Suche oben in Listen, Filter und Sortierung als Sheet oder Menü.
+
+## Features im Detail
+### Feature 1: Onboarding und Verbindungsmanagement
+Beim ersten Start:
+1. Eingabemaske für Server URL mit Default http://192.168.50.10:7912
+2. Health Check Button ruft GET /api/v1/health auf.
+3. Bei Erfolg speichern in Secure Storage.
+4. Bei Fehlern klare Meldung, mit Retry und Hinweis.
+
+### Feature 2: Hauptnavigation
+Bottom Navigation mit Tabs:
+1. Spulen
+2. Favoriten
+3. Scanner
+4. Einstellungen
+
+### Feature 3: Spulen Liste
+Datenquelle:
+1. Online: GET /api/v1/spool mit expand filament falls möglich.
+2. Offline: aus lokalem Cache.
+
+Anzeige pro Spule:
+1. Farbindikator
+2. Filament Name
+3. Hersteller
+4. Material
+5. Restgewicht als Zahl und Fortschrittsbalken
+
+Funktionen:
+1. Suche
+2. Filter: Hersteller, Material, Favoriten, Restgewicht Bereich
+3. Sortierung: Name, Restgewicht, Hersteller, Material
+4. Pull to Refresh
+5. Sync Status Icon
+
+### Feature 4: Favoriten
+Favoriten Status wird lokal gespeichert.
+Favoriten Liste zeigt nur Favoriten.
+Favoriten Toggle in Liste und Detail.
+
+### Feature 5: Spule Detailansicht
+Beim Öffnen:
+GET /api/v1/spool/{id}
+Zeige alle relevanten Daten.
+
+Gewichtsanpassung Modi:
+1. Slider von 0 bis Startgewicht
+2. Manuelle Eingabe
+3. Waagenmodus
+   Nutzer gibt Gesamtgewicht ein
+   Restgewicht wird berechnet als Gesamtgewicht minus Leergewicht
+   Leergewicht kommt aus Spool Daten wenn vorhanden
+
+Speichern:
+PATCH /api/v1/spool/{id} mit remaining_weight
+Wenn offline: speichere Änderung in pending queue und markiere als ausstehend.
+
+Weitere Aktionen:
+1. QR Code anzeigen für Spulen URL
+2. Teilen Funktion
+3. NFC Tag schreiben mit URL zur Spule
+4. Favorit umschalten
+
+### Feature 6: Scanner
+Drei Modi:
+1. Barcode oder QR Code Scan über Kamera
+2. NFC Scan und NFC Write
+3. OCR Scan
+
+Barcode oder QR Ablauf:
+1. Scanne Code
+2. Extrahiere Spulen ID oder URL
+3. Öffne Detailansicht oder Trefferliste
+
+NFC Ablauf:
+1. NFC lesen erkennt URL oder ID
+2. Öffne Detailansicht
+3. NFC schreiben in Detailansicht: schreibe URL auf Tag
+
+OCR Ablauf:
+1. Kamera Aufnahme
+2. Text Recognition auf dem Gerät
+3. Extrahiere Hersteller, Material, Farbe, Gewicht wenn möglich mit Regex
+4. Suche in lokalem Cache nach passenden Kandidaten
+5. Zeige Trefferliste, Nutzer bestätigt
+
+Wichtig: OCR und NFC müssen so integriert sein, dass es auf echten Android Geräten funktioniert. Wenn Expo Go nicht reicht, nutze Custom Dev Client Weg und dokumentiere es.
+
+### Feature 7: Offline First und Sync Engine
+Lokale Datenbank Tabellen:
+1. spool_cache
+2. filament_cache
+3. vendors_cache
+4. favorites
+5. pending_updates
+6. optional scan_history
+
+Sync Regeln:
+1. Wenn online: cache aktualisieren
+2. Wenn offline: app funktioniert aus cache
+3. pending_updates werden in Reihenfolge synchronisiert sobald online
+4. Konflikte: wenn server Werte neuer sind, dann server gewinnt oder last write wins, dokumentiere Entscheidung klar
+
+### Feature 8: Einstellungen
+Einstellungen Screen:
+1. Server URL ändern und testen
+2. Theme: auto, hell, dunkel
+3. Standard Gewichtsanpassung: slider, manuell, waage
+4. OCR Sprache falls relevant
+5. Export und Backup
+   Export JSON für cache und favorites
+6. Debug Bereich
+   zeige aktuelle server url
+   zeige letzten sync status
+   zeige queue länge
+
+### Feature 9: Widget Vorbereitung
+In Expo ist echtes Homescreen Widget nicht direkt möglich. Baue die App so, dass das Feature als Modul vorbereitet ist und später nativ ergänzt werden kann.
+1. Definiere eine Widget Daten Schnittstelle
+2. Definiere Hintergrund Update Mechanik
+3. Dokumentiere wie man das später nativ umsetzt
+
+## Stabilität und Qualität
+1. Sauberes Error Handling
+2. Keine Abstürze bei fehlenden Feldern
+3. Null Werte sauber anzeigen
+4. Timeout und Retry im API Layer
+5. Logging nur im Debug Modus
+
+## Tests und Dokumentation
+1. Unit Tests für Parsing, OCR Matching Logik, Sync Queue Logik
+2. Smoke Test Anleitung zum Starten und Testen auf Android Gerät
+3. README schreibt klar:
+   Setup
+   Start in Replit
+   Start lokal
+   Welche Features in Expo Go gehen und welche Dev Client benötigen
+   Wie man Android Build vorbereitet
+
+## Ergebnis
+Du lieferst:
+1. Vollständiges Projekt mit sauberer Struktur
+2. Funktionsfähige App Logik für Spoolman
+3. Scanner Barcode QR, NFC, OCR in einer realistischen und stabilen Umsetzung
+4. Lokale Datenbank mit Cache und Sync Queue
+5. Moderne UI nach Vorgaben
+6. README mit klaren Schritten
+
+Arbeite Schritt für Schritt und achte darauf, dass der Code ohne chaotische Fehlerlawinen baubar ist. Nutze stabile Versionen und dokumentiere die gewählten Versionen.
