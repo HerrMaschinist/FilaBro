@@ -7,15 +7,15 @@ import {
   TextInput,
   ActivityIndicator,
   StyleSheet,
-  useColorScheme,
   Platform,
   Alert,
 } from "react-native";
 import { useLocalSearchParams, Stack } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 import Colors from "@/constants/colors";
-import { useApp } from "@/contexts/AppContext";
+import { useApp, useAppTheme } from "@/contexts/AppContext";
 import type { Spool } from "@/lib/spoolman";
 
 function percentColor(pct: number, colors: typeof Colors.dark) {
@@ -39,13 +39,12 @@ function getFilamentLabel(spool: Spool): string {
 }
 
 export default function SpoolDetailScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-  const colors = isDark ? Colors.dark : Colors.light;
+  const { t } = useTranslation();
+  const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const { spools, updateWeight, toggleFavorite, isFavorite } = useApp();
+  const { spools, updateWeight, toggleFavorite, isFavorite, persistenceEnabled } = useApp();
 
   const remoteId = parseInt(id ?? "0", 10);
   const spool = spools.find((s) => s.id === remoteId) ?? null;
@@ -61,8 +60,7 @@ export default function SpoolDetailScreen() {
   }, [spool?.remaining_weight]);
 
   const remaining = spool?.remaining_weight ?? spool?.initial_weight ?? 0;
-  const total =
-    spool?.initial_weight ?? spool?.filament?.weight ?? 1000;
+  const total = spool?.initial_weight ?? spool?.filament?.weight ?? 1000;
   const percent = total > 0 ? Math.round((remaining / total) * 100) : 0;
 
   const colorHex = getColorHex(spool ?? ({} as Spool));
@@ -73,7 +71,7 @@ export default function SpoolDetailScreen() {
     if (!spool) return;
     const parsed = parseFloat(weightInput);
     if (isNaN(parsed) || parsed < 0) {
-      Alert.alert("Invalid", "Enter a valid weight in grams.");
+      Alert.alert(t("detail.invalid_weight"), t("detail.invalid_weight_msg"));
       return;
     }
     setIsSaving(true);
@@ -81,11 +79,11 @@ export default function SpoolDetailScreen() {
     try {
       await updateWeight(spool.id, parsed);
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : "Save failed");
+      setSaveError(err instanceof Error ? err.message : t("detail.save_failed"));
     } finally {
       setIsSaving(false);
     }
-  }, [spool, weightInput, updateWeight]);
+  }, [spool, weightInput, updateWeight, t]);
 
   const s = makeStyles(colors);
   const bottomInset = insets.bottom + (Platform.OS === "web" ? 34 : 0);
@@ -93,9 +91,9 @@ export default function SpoolDetailScreen() {
   if (!spool) {
     return (
       <View style={[s.center, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ title: "Spool Detail" }} />
+        <Stack.Screen options={{ title: t("detail.not_found") }} />
         <Text style={[s.notFound, { color: colors.textSecondary }]}>
-          Spool not found
+          {t("detail.not_found")}
         </Text>
       </View>
     );
@@ -113,7 +111,6 @@ export default function SpoolDetailScreen() {
         }}
       />
 
-      {/* ── Color strip + header ── */}
       <View
         style={[
           s.colorStrip,
@@ -128,7 +125,7 @@ export default function SpoolDetailScreen() {
           </Text>
           {spool.lot_nr && (
             <Text style={[s.sub, { color: colors.textSecondary }]}>
-              Lot {spool.lot_nr}
+              {t("detail.lot")} {spool.lot_nr}
             </Text>
           )}
         </View>
@@ -145,11 +142,10 @@ export default function SpoolDetailScreen() {
         </Pressable>
       </View>
 
-      {/* ── Weight bar ── */}
       <View style={[s.card, { backgroundColor: colors.surface }]}>
         <View style={s.barHeader}>
           <Text style={[s.barLabel, { color: colors.textSecondary }]}>
-            Remaining
+            {t("detail.remaining")}
           </Text>
           <Text style={[s.barPct, { color: barColor }]}>{percent}%</Text>
         </View>
@@ -171,10 +167,9 @@ export default function SpoolDetailScreen() {
         </View>
       </View>
 
-      {/* ── Edit weight ── */}
       <View style={[s.card, { backgroundColor: colors.surface, marginTop: 12 }]}>
         <Text style={[s.cardTitle, { color: colors.textSecondary }]}>
-          Update Weight
+          {t("detail.update_weight")}
         </Text>
         <View style={s.inputRow}>
           <TextInput
@@ -189,7 +184,7 @@ export default function SpoolDetailScreen() {
             value={weightInput}
             onChangeText={setWeightInput}
             keyboardType="decimal-pad"
-            placeholder="grams"
+            placeholder={t("detail.weight_placeholder")}
             placeholderTextColor={colors.textTertiary}
             returnKeyType="done"
             onSubmitEditing={saveWeight}
@@ -207,7 +202,7 @@ export default function SpoolDetailScreen() {
             {isSaving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={s.saveBtnLabel}>Save</Text>
+              <Text style={s.saveBtnLabel}>{t("common.save")}</Text>
             )}
           </Pressable>
         </View>
@@ -216,89 +211,46 @@ export default function SpoolDetailScreen() {
         )}
       </View>
 
-      {/* ── Filament info ── */}
       {spool.filament && (
         <View
           style={[s.card, { backgroundColor: colors.surface, marginTop: 12 }]}
         >
           <Text style={[s.cardTitle, { color: colors.textSecondary }]}>
-            Filament
+            {t("detail.filament")}
           </Text>
-          <InfoRow
-            label="Name"
-            value={spool.filament.name}
-            colors={colors}
-          />
-          <InfoRow
-            label="Material"
-            value={spool.filament.material}
-            colors={colors}
-          />
+          <InfoRow label={t("detail.name")} value={spool.filament.name} colors={colors} />
+          <InfoRow label={t("detail.material")} value={spool.filament.material} colors={colors} />
           {spool.filament.vendor?.name && (
-            <InfoRow
-              label="Manufacturer"
-              value={spool.filament.vendor.name}
-              colors={colors}
-            />
+            <InfoRow label={t("detail.manufacturer")} value={spool.filament.vendor.name} colors={colors} />
           )}
           {spool.filament.color_hex && (
-            <InfoRow
-              label="Color"
-              value={`#${spool.filament.color_hex}`}
-              colors={colors}
-              colorSwatch={spool.filament.color_hex}
-            />
+            <InfoRow label={t("detail.color")} value={`#${spool.filament.color_hex}`} colors={colors} colorSwatch={spool.filament.color_hex} />
           )}
           {spool.filament.weight !== undefined && (
-            <InfoRow
-              label="Full weight"
-              value={`${spool.filament.weight}g`}
-              colors={colors}
-            />
+            <InfoRow label={t("detail.full_weight")} value={`${spool.filament.weight}g`} colors={colors} />
           )}
           {spool.filament.spool_weight !== undefined && (
-            <InfoRow
-              label="Spool (empty)"
-              value={`${spool.filament.spool_weight}g`}
-              colors={colors}
-            />
+            <InfoRow label={t("detail.spool_empty")} value={`${spool.filament.spool_weight}g`} colors={colors} />
           )}
         </View>
       )}
 
-      {/* ── Spool metadata ── */}
       <View style={[s.card, { backgroundColor: colors.surface, marginTop: 12 }]}>
-        <Text style={[s.cardTitle, { color: colors.textSecondary }]}>Details</Text>
-        <InfoRow label="ID" value={`#${spool.id}`} colors={colors} />
+        <Text style={[s.cardTitle, { color: colors.textSecondary }]}>{t("detail.info")}</Text>
+        <InfoRow label={t("detail.id")} value={`#${spool.id}`} colors={colors} />
         {spool.comment && (
-          <InfoRow label="Comment" value={spool.comment} colors={colors} />
+          <InfoRow label={t("detail.comment")} value={spool.comment} colors={colors} />
         )}
         {spool.first_used && (
-          <InfoRow
-            label="First used"
-            value={new Date(spool.first_used).toLocaleDateString()}
-            colors={colors}
-          />
+          <InfoRow label={t("detail.first_used")} value={new Date(spool.first_used).toLocaleDateString()} colors={colors} />
         )}
         {spool.last_used && (
-          <InfoRow
-            label="Last used"
-            value={new Date(spool.last_used).toLocaleDateString()}
-            colors={colors}
-          />
+          <InfoRow label={t("detail.last_used")} value={new Date(spool.last_used).toLocaleDateString()} colors={colors} />
         )}
         {spool.registered && (
-          <InfoRow
-            label="Registered"
-            value={new Date(spool.registered).toLocaleDateString()}
-            colors={colors}
-          />
+          <InfoRow label={t("detail.registered")} value={new Date(spool.registered).toLocaleDateString()} colors={colors} />
         )}
-        <InfoRow
-          label="Archived"
-          value={spool.archived ? "Yes" : "No"}
-          colors={colors}
-        />
+        <InfoRow label={t("detail.archived")} value={spool.archived ? t("detail.yes") : t("detail.no")} colors={colors} />
       </View>
     </ScrollView>
   );
@@ -320,9 +272,7 @@ function InfoRow({
       <Text style={[ir.label, { color: colors.textSecondary }]}>{label}</Text>
       <View style={ir.valueRow}>
         {colorSwatch && (
-          <View
-            style={[ir.swatch, { backgroundColor: `#${colorSwatch}` }]}
-          />
+          <View style={[ir.swatch, { backgroundColor: `#${colorSwatch}` }]} />
         )}
         <Text style={[ir.value, { color: colors.text }]}>{value}</Text>
       </View>

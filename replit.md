@@ -63,6 +63,8 @@ Three-layer architecture: API → Repository → Domain
 - **Schema** (`src/data/db/schema.ts`): Tables for `manufacturers`, `filaments`, `spools`, `syncMeta`, and `pendingUpdates`
 - **Migrations**: Versioned SQL migration array in `src/data/db/client.ts`. Append-only — never edit existing entries. `CURRENT_SCHEMA_VERSION = 1`.
 - **Web fallback** (`src/data/db/client.web.ts`): Metro resolves this file instead of `client.ts` on web. All reads return `[]`, all writes reject. `isPersistenceEnabled = false`. Repositories are unaware of this — they just call `getDb()`.
+- **Web demo mode**: When `isPersistenceEnabled === false`, AppContext seeds 6 demo spools from `src/data/demo/demoData.ts`. Favorites toggle and weight edits work in-memory only. A `WebPreviewBanner` component shows "Web Preview — data is not persisted" on web.
+- **Error classes** (`src/data/api/errors.ts`): `NetworkError`, `TimeoutError`, `ApiError`, `ParseError`, `UnsupportedFeatureError` + `classifyFetchError()` utility.
 
 ### Storage
 
@@ -110,7 +112,7 @@ The app's core data source. Self-hosted on local network.
 | Package | Purpose |
 |---|---|
 | `expo-camera` | Barcode/QR scanning in Scanner tab |
-| `react-native-nfc-manager` | NFC tag reading (Dev Client/EAS build only; graceful fallback in Expo Go and web) |
+| `react-native-nfc-manager` | NFC tag reading (Dev Client/EAS build only; graceful fallback in Expo Go and web). `parseTagPayload()` supports JSON, URL, prefix (`spool:42`, `filabro:42`), UUID, and free-text numeric extraction. |
 | `expo-secure-store` | Secure storage for server URL |
 | `expo-sqlite` | Local SQLite database |
 | `expo-haptics` | Tactile feedback |

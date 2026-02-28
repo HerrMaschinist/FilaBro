@@ -41,6 +41,7 @@ import * as SyncService from "@/src/data/sync/SyncService";
 import { isPersistenceEnabled } from "@/src/data/db/client";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
+import { DEMO_SPOOLS } from "@/src/data/demo/demoData";
 
 // ─── Compatibility mapping ────────────────────────────────────────────────────
 function toViewSpool(sv: SpoolView): Spool {
@@ -172,6 +173,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (onboarded && isPersistenceEnabled) {
           const local = await SyncService.getLocalSpools();
           setSpools(local.map(toViewSpool));
+        } else if (!isPersistenceEnabled) {
+          setSpools(DEMO_SPOOLS);
         }
       } finally {
         setIsLoading(false);
@@ -268,17 +271,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleFavorite = useCallback(
     (id: number) => {
       const spool = spools.find((s) => s.id === id);
-      if (!spool?._localId) return;
+      if (!spool) return;
 
       const next = !spool._isFavorite;
       setSpools((prev) =>
         prev.map((s) => (s.id === id ? { ...s, _isFavorite: next } : s))
       );
-      SpoolRepository.setFavorite(spool._localId, next).catch(() => {
-        setSpools((prev) =>
-          prev.map((s) => (s.id === id ? { ...s, _isFavorite: !next } : s))
-        );
-      });
+
+      if (isPersistenceEnabled && spool._localId) {
+        SpoolRepository.setFavorite(spool._localId, next).catch(() => {
+          setSpools((prev) =>
+            prev.map((s) => (s.id === id ? { ...s, _isFavorite: !next } : s))
+          );
+        });
+      }
     },
     [spools]
   );
@@ -286,11 +292,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ─── Weight update (DB → mark dirty → background push) ──────────────────
   const updateWeight = useCallback(
     async (spoolId: number, weight: number) => {
-      if (!isPersistenceEnabled) {
-        throw new Error("Persistence not supported in web preview mode");
-      }
       const spool = spools.find((s) => s.id === spoolId);
-      if (!spool?._localId) return;
+      if (!spool) return;
+
+      if (!isPersistenceEnabled) {
+        setSpools((prev) =>
+          prev.map((s) =>
+            s.id === spoolId ? { ...s, remaining_weight: weight } : s
+          )
+        );
+        return;
+      }
+
+      if (!spool._localId) return;
 
       setSpools((prev) =>
         prev.map((s) =>

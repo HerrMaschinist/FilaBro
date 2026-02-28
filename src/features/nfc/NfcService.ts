@@ -28,15 +28,17 @@ let _NfcTech: any = null;
 let _Ndef: any = null;
 let _nativeAvailable = false;
 
-if (!IS_EXPO_GO) {
+if (Platform.OS !== "web" && !IS_EXPO_GO) {
   try {
     const mod = require("react-native-nfc-manager");
     _NfcManager = mod.default;
     _NfcTech = mod.NfcTech;
     _Ndef = mod.Ndef;
-    _nativeAvailable = true;
+    // Runtime check: verify the native module is actually linked
+    if (_NfcManager && typeof _NfcManager.isSupported === "function") {
+      _nativeAvailable = true;
+    }
   } catch {
-    // Module load failed (simulator, old RN, or broken native build)
     _nativeAvailable = false;
   }
 }
@@ -189,6 +191,12 @@ export async function stopScan(): Promise<void> {
  *   2. URL:   http://host/spool/123  or  ?spoolId=123
  *   3. Plain: bare numeric or alphanumeric ID  "123"
  */
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PREFIX_REGEX =
+  /^(?:spool|filabro|spoolman|filament)[:\-#](.+)$/i;
+const NUMERIC_ID_REGEX = /\b(\d{1,10})\b/;
+
 export function parseTagPayload(raw: string): NfcTagPayload {
   const trimmed = raw.trim();
 
@@ -203,11 +211,19 @@ export function parseTagPayload(raw: string): NfcTagPayload {
     // not JSON
   }
 
-  // ── 2. URL ────────────────────────────────────────────────────────────────
+  // ── 2. Prefix variants: spool:42, filabro:42, spoolman:42, filament:42
+  const prefixMatch = trimmed.match(PREFIX_REGEX);
+  if (prefixMatch) {
+    const val = prefixMatch[1].trim();
+    if (/^\d+$/.test(val) || UUID_REGEX.test(val)) {
+      return { spoolId: val, raw: trimmed };
+    }
+  }
+
+  // ── 3. URL ────────────────────────────────────────────────────────────────
   try {
     const url = new URL(trimmed);
 
-    // Check path segments: /spool/123  or  /spools/123
     const parts = url.pathname.split("/").filter(Boolean);
     const spoolIdx = parts.findIndex(
       (p) => p.toLowerCase() === "spool" || p.toLowerCase() === "spools"
@@ -216,7 +232,6 @@ export function parseTagPayload(raw: string): NfcTagPayload {
       return { spoolId: parts[spoolIdx + 1], raw: trimmed };
     }
 
-    // Check query params: ?spoolId=123  or  ?spool_id=123  or  ?id=123
     const qId =
       url.searchParams.get("spoolId") ??
       url.searchParams.get("spool_id") ??
@@ -228,10 +243,15 @@ export function parseTagPayload(raw: string): NfcTagPayload {
     // not a URL
   }
 
-  // ── 3. Plain ID ────────────────────────────────────────────────────────────
-  // Accept purely numeric values as a bare spool ID
+  // ── 4. Pure numeric ID ────────────────────────────────────────────────────
   if (/^\d+$/.test(trimmed)) {
     return { spoolId: trimmed, raw: trimmed };
+  }
+
+  // ── 5. Extract first numeric ID from free text ────────────────────────────
+  const numMatch = trimmed.match(NUMERIC_ID_REGEX);
+  if (numMatch) {
+    return { spoolId: numMatch[1], raw: trimmed };
   }
 
   // Could not extract a spool ID

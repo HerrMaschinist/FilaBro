@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  useColorScheme,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -13,7 +12,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Colors from "@/constants/colors";
+import { useTranslation } from "react-i18next";
+import { useAppTheme } from "@/contexts/AppContext";
 import {
   Spool,
   getFilamentColor,
@@ -36,9 +36,8 @@ export function SpoolCard({
   onToggleFavorite,
   isPending = false,
 }: SpoolCardProps) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-  const colors = isDark ? Colors.dark : Colors.light;
+  const { colors } = useAppTheme();
+  const { t } = useTranslation();
 
   const filamentColor = getFilamentColor(spool);
   const percent = getRemainingPercent(spool);
@@ -88,12 +87,12 @@ export function SpoolCard({
                   {isPending && (
                     <View style={[s.badge, { backgroundColor: `${colors.warning}1A` }]}>
                       <Ionicons name="cloud-upload-outline" size={10} color={colors.warning} />
-                      <Text style={[s.badgeText, { color: colors.warning }]}>Pending</Text>
+                      <Text style={[s.badgeText, { color: colors.warning }]}>{t("spool_card.pending")}</Text>
                     </View>
                   )}
                   {spool.archived && (
                     <View style={[s.badge, { backgroundColor: `${colors.textTertiary}1A` }]}>
-                      <Text style={[s.badgeText, { color: colors.textTertiary }]}>Archived</Text>
+                      <Text style={[s.badgeText, { color: colors.textTertiary }]}>{t("spool_card.archived")}</Text>
                     </View>
                   )}
                 </View>
