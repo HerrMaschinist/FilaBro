@@ -12,6 +12,10 @@
  *
  * Conflict strategy: See SyncUseCase for pull policy.
  *   Push: local always wins. After push succeeds, close any open conflict (keep_local).
+ *
+ * Phase 4:
+ *   remaining_weight for the PATCH comes from spool_stats (current projection),
+ *   falling back to SpoolSyncRecord.remainingWeight for pre-Phase-4 data.
  */
 import { getDb } from "../db/client";
 import { syncMeta } from "../db/schema";
@@ -19,6 +23,7 @@ import { eq } from "drizzle-orm";
 import { ManufacturerRepository } from "../repositories/ManufacturerRepository";
 import { FilamentRepository } from "../repositories/FilamentRepository";
 import { SpoolRepository } from "../repositories/SpoolRepository";
+import { SpoolStatsRepository } from "../repositories/SpoolStatsRepository";
 import { ConflictSnapshotRepository } from "../repositories/ConflictSnapshotRepository";
 import type { SpoolView } from "../../domain/models";
 import * as SpoolmanClient from "../api/SpoolmanClient";
@@ -169,6 +174,9 @@ export async function pull(baseUrl: string): Promise<SyncResult> {
  * Marks them as synced on success.
  * Closes any open conflict snapshot for successfully pushed spools (keep_local resolution).
  * On failure, leaves them dirty for the next sync cycle.
+ *
+ * Phase 4: remaining_weight is sourced from spool_stats first, then falls back
+ * to SpoolSyncRecord.remainingWeight for backward compatibility with pre-Phase-4 data.
  */
 export async function push(baseUrl: string): Promise<SyncResult> {
   const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, errors: [] };
@@ -185,11 +193,17 @@ export async function push(baseUrl: string): Promise<SyncResult> {
       spool.dirtyFields.length > 0 ? spool.dirtyFields : ["remaining_weight"];
 
     try {
-      if (dirty.includes("remaining_weight") && spool.remainingWeight !== undefined) {
-        log(`  PATCH spool remoteId=${spool.remoteId} remaining_weight=${spool.remainingWeight}`);
-        await SpoolmanClient.patchSpool(baseUrl, spool.remoteId, {
-          remaining_weight: spool.remainingWeight,
-        });
+      if (dirty.includes("remaining_weight")) {
+        // Phase 4: prefer spool_stats over legacy spools.remaining_weight
+        const statsWeight = await SpoolStatsRepository.getRemainingWeight(spool.localId);
+        const remainingToSend = statsWeight ?? spool.remainingWeight;
+
+        if (remainingToSend !== undefined) {
+          log(`  PATCH spool remoteId=${spool.remoteId} remaining_weight=${remainingToSend} (from ${statsWeight !== undefined ? "spool_stats" : "spools"})`);
+          await SpoolmanClient.patchSpool(baseUrl, spool.remoteId, {
+            remaining_weight: remainingToSend,
+          });
+        }
       }
       await SpoolRepository.markSynced(spool.localId);
 
@@ -236,6 +250,8 @@ export async function sync(baseUrl: string): Promise<SyncResult> {
 /**
  * Push a single spool by its localId.
  * Used for immediate save after weight update.
+ *
+ * Phase 4: remaining_weight sourced from spool_stats first.
  */
 export async function pushOne(
   baseUrl: string,
@@ -245,12 +261,18 @@ export async function pushOne(
   if (!record || !record.remoteId) return;
   if (record.syncState !== "pending_push" && record.syncState !== "dirty") return;
 
-  log(`pushOne remoteId=${record.remoteId} remaining=${record.remainingWeight}`);
+  // Phase 4: prefer spool_stats projection over legacy column
+  const statsWeight = await SpoolStatsRepository.getRemainingWeight(localId);
+  const remainingToSend = statsWeight ?? record.remainingWeight;
+
+  log(`pushOne remoteId=${record.remoteId} remaining=${remainingToSend} (from ${statsWeight !== undefined ? "spool_stats" : "spools"})`);
 
   try {
-    await SpoolmanClient.patchSpool(baseUrl, record.remoteId, {
-      remaining_weight: record.remainingWeight,
-    });
+    if (remainingToSend !== undefined) {
+      await SpoolmanClient.patchSpool(baseUrl, record.remoteId, {
+        remaining_weight: remainingToSend,
+      });
+    }
     await SpoolRepository.markSynced(record.localId);
 
     // Close any open conflict — local was pushed successfully

@@ -13,6 +13,11 @@
  * sync() — push first (preserve local writes), then pull with conflict policy.
  *
  * Invariant: "Local changes are never implicitly overwritten by remote data."
+ *
+ * Phase 4 additions:
+ *   - When accept_remote for a spool: upsert spool_stats with remote remainingWeight
+ *     and append an adjustment UsageEvent with source="sync" for the audit trail.
+ *   - When inserting a new remote spool: seed spool_stats with remote remainingWeight.
  */
 import * as SyncService from "@/src/data/sync/SyncService";
 import { updateSyncMeta } from "@/src/data/sync/SyncService";
@@ -21,12 +26,18 @@ import type { SyncResult } from "@/src/core/ports/index";
 import { ManufacturerRepository } from "@/src/data/repositories/ManufacturerRepository";
 import { FilamentRepository } from "@/src/data/repositories/FilamentRepository";
 import { SpoolRepository } from "@/src/data/repositories/SpoolRepository";
+import { SpoolStatsRepository } from "@/src/data/repositories/SpoolStatsRepository";
+import { UsageEventRepository } from "@/src/data/repositories/UsageEventRepository";
 import { ConflictSnapshotRepository } from "@/src/data/repositories/ConflictSnapshotRepository";
 import { defaultConflictResolver } from "./conflict/ConflictResolver";
 import * as SpoolmanClient from "@/src/data/api/SpoolmanClient";
 
 function log(msg: string) {
   if (__DEV__) console.log(`[SyncUseCase] ${msg}`);
+}
+
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 }
 
 // ─── Remote-to-local field comparison ────────────────────────────────────────
@@ -234,7 +245,26 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
 
       if (!record) {
         // New entity — no local record, safe to insert
-        await SpoolRepository.insertSpoolFromRemote(remoteData);
+        const inserted = await SpoolRepository.insertSpoolFromRemote(remoteData);
+
+        // Phase 4: seed spool_stats with remote remaining weight (audit trail: sync event)
+        if (remoteData.remainingWeight !== undefined) {
+          await SpoolStatsRepository.upsertRemainingWeight(
+            inserted.localId,
+            remoteData.remainingWeight,
+            now
+          );
+          await UsageEventRepository.append({
+            id: generateId(),
+            spoolLocalId: inserted.localId,
+            grams: Math.round(remoteData.remainingWeight),
+            type: "adjustment",
+            occurredAt: now,
+            source: "sync",
+            note: `Initial sync from Spoolman (remoteId=${rs.id})`,
+          });
+        }
+
         result.pulled++;
         log(`  INSERT spool remoteId=${rs.id}`);
         continue;
@@ -263,6 +293,25 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
 
       if (resolution === "accept_remote") {
         await SpoolRepository.applyRemoteSpoolUpdate(record.localId, remoteData);
+
+        // Phase 4: update spool_stats with remote remaining weight + add audit event
+        if (remoteData.remainingWeight !== undefined) {
+          await SpoolStatsRepository.upsertRemainingWeight(
+            record.localId,
+            remoteData.remainingWeight,
+            now
+          );
+          await UsageEventRepository.append({
+            id: generateId(),
+            spoolLocalId: record.localId,
+            grams: Math.round(remoteData.remainingWeight),
+            type: "adjustment",
+            occurredAt: now,
+            source: "sync",
+            note: `Sync from Spoolman (remoteId=${rs.id}, remaining=${remoteData.remainingWeight}g)`,
+          });
+        }
+
         result.pulled++;
         log(`  ACCEPT spool remoteId=${rs.id}`);
       } else {

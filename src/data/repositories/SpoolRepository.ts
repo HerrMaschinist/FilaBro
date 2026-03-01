@@ -11,6 +11,21 @@
  *   - Added `insertSpoolFromRemote()` — insert unknown remote entity, no policy.
  *   - Added `setSyncState()` — explicit state control for Application Layer.
  *   - All conflict policy decisions belong in SyncUseCase, not here.
+ *
+ * Phase 4 changes:
+ *   - `updateRemainingWeight()` is deprecated. It no longer writes
+ *     `spools.remaining_weight` — that column is now the legacy/initial value.
+ *     The projected remaining weight lives in `spool_stats` (SpoolStatsRepository).
+ *   - Added `markWeightPendingPush()` — marks spool as pending_push for sync
+ *     without touching `remaining_weight` in the spools table.
+ *   - `getAllView()` batch-loads spool_stats to supply `remainingWeight` in SpoolView.
+ *   - `getByLocalIdView()` prefers spool_stats for `remainingWeight`.
+ *   - `createLocal()` still writes `spools.remaining_weight` as the initial value
+ *     (seeded to spool_stats by CatalogUseCase after the insert).
+ *   - `applyRemoteSpoolUpdate()` still writes `spools.remaining_weight` from remote
+ *     data (migration/init path; SyncUseCase also seeds spool_stats after this call).
+ *   - `insertSpoolFromRemote()` still writes `spools.remaining_weight` from remote
+ *     data (initial insert path; SyncUseCase also seeds spool_stats after this call).
  */
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
@@ -18,6 +33,7 @@ import { spools, InsertSpool } from "../db/schema";
 import type { Spool, SpoolView } from "../../domain/models";
 import { FilamentRepository } from "./FilamentRepository";
 import { ManufacturerRepository } from "./ManufacturerRepository";
+import { SpoolStatsRepository } from "./SpoolStatsRepository";
 
 function generateLocalId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -31,6 +47,7 @@ function generateLocalId(): string {
 export interface SpoolSyncRecord {
   localId: string;
   remoteId?: number;
+  /** Legacy: remaining_weight from spools table. Use spool_stats for current truth. */
   remainingWeight?: number;
   syncState: string;
   dirtyFields: string[];
@@ -89,12 +106,27 @@ export const SpoolRepository = {
     return rows.map(toSpool);
   },
 
+  /**
+   * Returns all spools hydrated with filament/manufacturer data.
+   * remainingWeight is sourced from spool_stats (Phase 4 projection),
+   * falling back to spools.remaining_weight for pre-Phase-4 data.
+   */
   async getAllView(): Promise<SpoolView[]> {
     const allSpools = await this.getAll();
+    if (allSpools.length === 0) return [];
+
+    const localIds = allSpools.map((s) => s.localId);
+    const statsMap = await SpoolStatsRepository.getBatchRemainingWeights(localIds);
+
     const result: SpoolView[] = [];
 
     for (const spool of allSpools) {
-      const view: SpoolView = { ...spool };
+      const projectedWeight = statsMap.get(spool.localId);
+      const view: SpoolView = {
+        ...spool,
+        remainingWeight: projectedWeight ?? spool.remainingWeight,
+      };
+
       if (spool.filamentLocalId) {
         const filament = await FilamentRepository.getByLocalId(
           spool.filamentLocalId
@@ -110,6 +142,7 @@ export const SpoolRepository = {
           view.filament = { ...filament, manufacturer };
         }
       }
+
       result.push(view);
     }
 
@@ -154,11 +187,20 @@ export const SpoolRepository = {
     return rows[0] ? toSpoolSyncRecord(rows[0]) : null;
   },
 
+  /**
+   * Returns a single spool hydrated with filament/manufacturer data.
+   * remainingWeight prefers spool_stats projection over spools column.
+   */
   async getByLocalIdView(localId: string): Promise<SpoolView | null> {
     const spool = await this.getByLocalId(localId);
     if (!spool) return null;
 
-    const view: SpoolView = { ...spool };
+    const statsWeight = await SpoolStatsRepository.getRemainingWeight(localId);
+    const view: SpoolView = {
+      ...spool,
+      remainingWeight: statsWeight ?? spool.remainingWeight,
+    };
+
     if (spool.filamentLocalId) {
       const filament = await FilamentRepository.getByLocalId(
         spool.filamentLocalId
@@ -193,6 +235,9 @@ export const SpoolRepository = {
    * Apply a remote update to an existing local spool.
    * Called by Application Layer ONLY when it has decided to accept_remote.
    * Does NOT check syncState — that decision belongs to the caller.
+   *
+   * Phase 4 note: writes spools.remaining_weight here as legacy/remote initial
+   * value. SyncUseCase also upserts spool_stats after calling this method.
    */
   async applyRemoteSpoolUpdate(
     localId: string,
@@ -269,6 +314,9 @@ export const SpoolRepository = {
   /**
    * Insert a spool received from remote that does not exist locally.
    * Assigns syncState = "synced" since the record is in sync with the server.
+   *
+   * Phase 4 note: writes spools.remaining_weight as the initial remote value.
+   * SyncUseCase upserts spool_stats after calling this method.
    */
   async insertSpoolFromRemote(data: {
     remoteId: number;
@@ -336,41 +384,49 @@ export const SpoolRepository = {
   },
 
   /**
-   * Update remaining_weight locally and mark as pending_push.
-   * Does NOT call the network — SyncService handles that.
+   * Mark a spool as pending_push for weight synchronisation.
+   * Does NOT touch spools.remaining_weight — that column is a legacy/init field.
+   * The actual remaining weight lives in spool_stats (SpoolStatsRepository).
+   *
+   * Called by WeightUseCase after appending a UsageEvent and upserting spool_stats.
    */
-  async updateRemainingWeight(
-    localId: string,
-    remainingWeight: number
-  ): Promise<Spool | null> {
-    // Query raw row to access localVersion (not on domain Spool)
+  async markWeightPendingPush(localId: string, now: number): Promise<void> {
     const rows = await getDb()
       .select()
       .from(spools)
       .where(eq(spools.localId, localId))
       .limit(1);
-    if (!rows[0]) return null;
-
-    const existing = rows[0];
-    const dirtyFields = JSON.stringify(["remaining_weight"]);
-    const now = Date.now();
+    if (!rows[0]) return;
 
     await getDb()
       .update(spools)
       .set({
-        remainingWeight,
         syncState: "pending_push",
-        dirtyFields,
-        localVersion: existing.localVersion + 1,
+        dirtyFields: JSON.stringify(["remaining_weight"]),
+        localVersion: rows[0].localVersion + 1,
         lastModifiedAt: now,
       })
       .where(eq(spools.localId, localId));
+  },
 
-    return {
-      ...toSpool(existing),
-      remainingWeight,
-      lastModifiedAt: now,
-    };
+  /**
+   * @deprecated Phase 4: use WeightUseCase.adjustRemaining() instead.
+   * This method no longer writes spools.remaining_weight.
+   * It only updates sync state metadata so the push cycle knows to sync this spool.
+   * The actual weight is managed by SpoolStatsRepository + UsageEventRepository.
+   */
+  async updateRemainingWeight(
+    localId: string,
+    remainingWeight: number
+  ): Promise<Spool | null> {
+    const now = Date.now();
+    await this.markWeightPendingPush(localId, now);
+
+    // Return a spool with the requested remainingWeight for backward compat.
+    // The value will be reflected via spool_stats on the next getAllView() call.
+    const spool = await this.getByLocalId(localId);
+    if (!spool) return null;
+    return { ...spool, remainingWeight, lastModifiedAt: now };
   },
 
   async setFavorite(localId: string, isFavorite: boolean): Promise<void> {
@@ -387,6 +443,11 @@ export const SpoolRepository = {
       .where(eq(spools.localId, localId));
   },
 
+  /**
+   * Create a new spool locally.
+   * Writes spools.remaining_weight as the initial value (migration/init path).
+   * CatalogUseCase seeds spool_stats after this call.
+   */
   async createLocal(data: {
     filamentLocalId: string;
     remainingWeight?: number;

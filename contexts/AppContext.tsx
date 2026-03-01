@@ -33,6 +33,7 @@ import { isPersistenceEnabled } from "@/src/data/db/client";
 import { CatalogUseCase } from "@/src/core/application/CatalogUseCase";
 import { SyncUseCase } from "@/src/core/application/SyncUseCase";
 import { SpoolUseCase } from "@/src/core/application/SpoolUseCase";
+import { WeightUseCase } from "@/src/core/application/WeightUseCase";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
 import {
@@ -393,7 +394,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next;
       });
 
-      await SpoolUseCase.updateRemainingWeight(spool._localId, weight);
+      // Phase 4: record as adjustment event + upsert spool_stats projection
+      await WeightUseCase.adjustRemaining(spool._localId, weight, "manual");
 
       if (serverUrl) {
         SyncUseCase.pushOne(serverUrl, spool._localId)

@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import * as schema from "./schema";
 
 const DB_NAME = "filabro.db";
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 
 /**
  * Versioned SQL migrations.
@@ -112,6 +112,36 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
        )`,
       `CREATE INDEX IF NOT EXISTS conflict_local_entity_idx ON conflict_snapshots(entity_type, local_id)`,
       `CREATE INDEX IF NOT EXISTS conflict_resolved_idx ON conflict_snapshots(resolved_at)`,
+    ],
+  },
+  {
+    version: 4,
+    statements: [
+      // Usage events — append-only audit log
+      `CREATE TABLE IF NOT EXISTS usage_events (
+         id             TEXT PRIMARY KEY,
+         spool_local_id TEXT NOT NULL,
+         grams          INTEGER NOT NULL,
+         type           TEXT NOT NULL,
+         occurred_at    INTEGER NOT NULL,
+         source         TEXT NOT NULL,
+         note           TEXT
+       )`,
+      `CREATE INDEX IF NOT EXISTS usage_events_spool_time_idx ON usage_events(spool_local_id, occurred_at)`,
+      `CREATE INDEX IF NOT EXISTS usage_events_spool_idx ON usage_events(spool_local_id)`,
+      // Spool stats — projection / read model
+      `CREATE TABLE IF NOT EXISTS spool_stats (
+         spool_local_id   TEXT PRIMARY KEY,
+         remaining_weight INTEGER,
+         updated_at       INTEGER NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS spool_stats_updated_idx ON spool_stats(updated_at)`,
+      // Seed spool_stats from existing spools.remaining_weight so pre-Phase-4
+      // data is immediately queryable without waiting for the first usage event.
+      `INSERT OR IGNORE INTO spool_stats (spool_local_id, remaining_weight, updated_at)
+       SELECT local_id, CAST(remaining_weight AS INTEGER), last_modified_at
+       FROM spools
+       WHERE remaining_weight IS NOT NULL`,
     ],
   },
 ];

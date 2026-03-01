@@ -41,6 +41,11 @@ export const spools = sqliteTable("spools", {
   localId: text("local_id").primaryKey(),
   remoteId: integer("remote_id"),
   filamentLocalId: text("filament_local_id"),
+  /**
+   * Legacy column — initial or remote-sourced value.
+   * Phase 4 source of truth for remaining weight is spool_stats.remaining_weight.
+   * Do NOT write to this column for user-initiated weight changes.
+   */
   remainingWeight: real("remaining_weight"),
   initialWeight: real("initial_weight"),
   spoolWeight: real("spool_weight"),
@@ -111,6 +116,53 @@ export const conflictSnapshots = sqliteTable(
   })
 );
 
+/**
+ * Append-only log of filament usage events.
+ * grams is always positive.
+ *   type="consume"    → amount consumed; reduces remaining
+ *   type="adjustment" → absolute new remaining weight; source of truth overwrite
+ */
+export const usageEvents = sqliteTable(
+  "usage_events",
+  {
+    id: text("id").primaryKey(),
+    spoolLocalId: text("spool_local_id").notNull(),
+    /** Integer grams — stored as integer, read as integer. */
+    grams: integer("grams").notNull(),
+    type: text("type").notNull(),
+    /** Unix milliseconds when the usage occurred. */
+    occurredAt: integer("occurred_at").notNull(),
+    source: text("source").notNull(),
+    note: text("note"),
+  },
+  (t) => ({
+    spoolTimeIdx: index("usage_events_spool_time_idx").on(
+      t.spoolLocalId,
+      t.occurredAt
+    ),
+    spoolIdx: index("usage_events_spool_idx").on(t.spoolLocalId),
+  })
+);
+
+/**
+ * Projection table — stores the current calculated remaining weight per spool.
+ * Written by WeightUseCase and SyncUseCase, never by direct user edits to spools.
+ * Reading this is always preferred over spools.remaining_weight.
+ */
+export const spoolStats = sqliteTable(
+  "spool_stats",
+  {
+    spoolLocalId: text("spool_local_id").primaryKey(),
+    /** Projected remaining weight in grams. Null until first usage event. */
+    remainingWeight: integer("remaining_weight"),
+    /** Unix milliseconds when this projection was last updated. */
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => ({
+    updatedIdx: index("spool_stats_updated_idx").on(t.updatedAt),
+  })
+);
+
 export type DbManufacturer = typeof manufacturers.$inferSelect;
 export type InsertManufacturer = typeof manufacturers.$inferInsert;
 export type DbFilament = typeof filaments.$inferSelect;
@@ -120,3 +172,7 @@ export type InsertSpool = typeof spools.$inferInsert;
 export type DbSyncMeta = typeof syncMeta.$inferSelect;
 export type DbConflictSnapshot = typeof conflictSnapshots.$inferSelect;
 export type InsertConflictSnapshot = typeof conflictSnapshots.$inferInsert;
+export type DbUsageEvent = typeof usageEvents.$inferSelect;
+export type InsertUsageEvent = typeof usageEvents.$inferInsert;
+export type DbSpoolStats = typeof spoolStats.$inferSelect;
+export type InsertSpoolStats = typeof spoolStats.$inferInsert;

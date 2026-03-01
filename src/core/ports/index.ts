@@ -8,6 +8,7 @@
 import type { Spool, SpoolView } from "@/src/core/domain/spool";
 import type { Filament } from "@/src/core/domain/filament";
 import type { Manufacturer } from "@/src/core/domain/manufacturer";
+import type { UsageEvent } from "@/src/core/domain/usage";
 
 // ─── Infrastructure Utilities ─────────────────────────────────────────────────
 
@@ -56,7 +57,6 @@ export interface ISpoolRepository {
   getByRemoteId(remoteId: number): Promise<Spool | null>;
   createLocal(data: CreateSpoolInput): Promise<Spool>;
   upsertFromRemote(data: UpsertSpoolFromRemoteInput): Promise<Spool>;
-  updateRemainingWeight(localId: string, grams: number): Promise<Spool | null>;
   setFavorite(localId: string, isFavorite: boolean): Promise<void>;
   markSynced(localId: string): Promise<void>;
   deleteByLocalId(localId: string): Promise<boolean>;
@@ -136,6 +136,43 @@ export interface ISyncMetaRepository {
     field: "lastPullAt" | "lastPushAt",
     serverUrl: string
   ): Promise<void>;
+}
+
+// ─── Usage Event Repository ───────────────────────────────────────────────────
+
+export interface IUsageEventRepository {
+  /** Append-only. Never modifies existing events. */
+  append(event: UsageEvent): Promise<void>;
+  /** All events for a spool, ordered by occurredAt ascending. */
+  listBySpool(spoolLocalId: string): Promise<UsageEvent[]>;
+  /** Events for a spool since a given timestamp (inclusive), ordered ascending. */
+  listBySpoolSince(spoolLocalId: string, sinceMs: number): Promise<UsageEvent[]>;
+}
+
+// ─── Spool Stats Repository (Projection) ─────────────────────────────────────
+
+export interface ISpoolStatsRepository {
+  /**
+   * Returns the projected remaining weight for a spool.
+   * Returns undefined if no projection has been computed yet.
+   */
+  getRemainingWeight(spoolLocalId: string): Promise<number | undefined>;
+  /**
+   * Create or update the remaining weight projection for a spool.
+   * updatedAt is the unix ms timestamp when this value was set.
+   */
+  upsertRemainingWeight(
+    spoolLocalId: string,
+    remainingWeight: number,
+    updatedAt: number
+  ): Promise<void>;
+  /**
+   * Bulk-load remaining weights for a set of spoolLocalIds.
+   * Returns a Map from localId to remainingWeight.
+   */
+  getBatchRemainingWeights(
+    spoolLocalIds: string[]
+  ): Promise<Map<string, number>>;
 }
 
 // ─── External Filament System Port (Spoolman adapter contract) ────────────────

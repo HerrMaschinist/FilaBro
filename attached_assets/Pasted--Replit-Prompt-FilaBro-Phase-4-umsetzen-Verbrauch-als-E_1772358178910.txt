@@ -1,0 +1,183 @@
+# Replit Prompt: FilaBro Phase 4 umsetzen (Verbrauch als Event Store + Projektion)
+
+Du arbeitest im bestehenden FilaBro Repo. Phase 1 bis Phase 3 sind bereits umgesetzt und bauen clean.
+Phase 3 Ergebnis:
+- Offline First Konflikte sind implementiert, keine Server Wins Logik.
+- conflict_snapshots Tabelle existiert, ConflictSnapshotRepository existiert.
+- Domain ist rein unter /src/core/domain.
+
+Jetzt implementierst Du Phase 4: Verbrauchsmodell als append-only Events, mit skalierbarer Projektion.
+
+## Ziele Phase 4
+1. Verbrauch wird als Ereignisse gespeichert, append-only.
+2. remainingWeight wird nicht mehr als “Wahrheit” mutiert, sondern aus Events berechnet oder aus Projektion gelesen.
+3. Audit Trail ist vorhanden.
+4. Performance bleibt gut bei 1000+ Spulen.
+5. Nach Phase 4 baut das Projekt inkl. tsc.
+
+## Nicht verhandelbar
+1. Konkrete Dateipfade, kompletter Dateiinhalt oder Diff pro Änderung.
+2. Keine UI Redesigns. Nur minimale Anpassungen, damit bestehende Funktionen weiterlaufen.
+3. Domain bleibt rein. Keine Infrastruktur Imports in /src/core/domain.
+4. Keine Datenverlust Migration. Bestehende Werte bleiben nutzbar.
+5. Jede neue Tabelle bekommt sinnvolle Indizes.
+
+## Ausgangslage
+- Spool hat Felder wie remainingWeight, initialWeight, spoolWeight, usedWeight (oder ähnlich).
+- Aktuell wird remainingWeight direkt aktualisiert (in Repo oder UseCase).
+- Verbrauchsassistenz braucht Verlauf, Undo, Prognosen. Dafür Event Store.
+
+## Phase 4 Aufgaben
+
+### Schritt 4.1: Domain Typen für Usage Events anlegen
+Erstelle:
+- /src/core/domain/usage/types.ts
+- /src/core/domain/usage/index.ts
+- Update /src/core/domain/index.ts, damit usage exportiert wird.
+
+Inhalt:
+- UsageEventType = "consume" | "adjustment"
+- UsageEventSource = "manual" | "scan" | "sync" | "import"
+- UsageEvent:
+  - id: string
+  - spoolLocalId: string
+  - grams: number
+  - type: UsageEventType
+  - occurredAt: number (unix ms)
+  - source: UsageEventSource
+  - note?: string
+
+Regeln:
+- grams ist positiv.
+- consume reduziert Rest, adjustment kann hoch oder runter, aber wird als grams mit type adjustment gespeichert.
+- Domain Dateien dürfen keine DB Imports haben.
+
+### Schritt 4.2: Ports für Event Store und Projektion definieren
+Update:
+- /src/core/ports/index.ts
+
+Neue Interfaces:
+- IUsageEventRepository:
+  - append(event: UsageEvent): Promise<void>
+  - listBySpool(spoolLocalId: string): Promise<UsageEvent[]>
+  - listBySpoolSince(spoolLocalId: string, sinceMs: number): Promise<UsageEvent[]>
+- ISpoolStatsRepository oder ISpoolProjectionRepository:
+  - getRemainingWeight(spoolLocalId: string): Promise<number | undefined>
+  - upsertRemainingWeight(spoolLocalId: string, remainingWeight: number, updatedAt: number): Promise<void>
+
+Optional:
+- ITransaction oder UnitOfWork falls ihr Transaktionen schon habt.
+Wenn nicht vorhanden, bleib minimalistisch.
+
+### Schritt 4.3: SQLite Tabellen und Migration hinzufügen
+Update:
+- /src/data/db/schema.ts
+- /src/data/db/client.ts
+
+Neue Tabellen:
+1) usage_events
+- id text primary key
+- spool_local_id text not null
+- grams integer not null
+- type text not null
+- occurred_at integer not null
+- source text not null
+- note text nullable
+
+Indizes:
+- usage_events_spool_time_idx auf (spool_local_id, occurred_at)
+- usage_events_spool_idx auf (spool_local_id)
+
+2) spool_stats (Projektion)
+- spool_local_id text primary key
+- remaining_weight integer nullable
+- updated_at integer not null
+
+Indizes:
+- spool_stats_updated_idx auf (updated_at)
+
+Migration:
+- Erhöhe Schema Version sauber.
+- Keine existierenden Tabellen löschen.
+- Wenn möglich initialisiere spool_stats.remaining_weight aus spools.remainingWeight, sofern Feld existiert.
+  Falls nicht sicher, dann nur Tabellen anlegen ohne Initialfill.
+
+### Schritt 4.4: Repositories implementieren
+Erstelle:
+- /src/data/repositories/UsageEventRepository.ts
+- /src/data/repositories/SpoolStatsRepository.ts
+
+Beide implementieren die Ports.
+Achte auf:
+- grams als integer
+- occurredAt in ms
+
+### Schritt 4.5: SpoolRepository entkoppeln von remainingWeight Mutation
+Update:
+- /src/data/repositories/SpoolRepository.ts
+
+Regel:
+- Keine direkte Update Methode mehr, die remainingWeight als fachliche Wahrheit überschreibt, außer für Migration oder initial values.
+- Wenn es aktuell updateRemainingWeight gibt, deprecate:
+  - Entweder entfernen, oder intern nur spool_stats aktualisieren, nicht spools.
+
+Wenn vorhandene Screens noch remainingWeight aus Spool lesen:
+- Belasse remainingWeight als optionales Feld im Domain Model, aber befülle es beim View Query aus spool_stats.
+- Das verhindert UI Änderungen.
+
+### Schritt 4.6: Application Use Case für Verbrauch implementieren
+Update oder neu:
+- /src/core/application/SpoolUseCase.ts oder /src/core/application/WeightUseCase.ts
+
+Neue Methode:
+- recordUsage(spoolLocalId: string, grams: number, source: UsageEventSource, note?: string)
+
+Ablauf:
+1. Hole aktuelle Remaining Projection aus spool_stats.
+2. Ermittle Ausgangswert:
+   - Wenn spool_stats.remaining_weight definiert, nutze den
+   - Sonst fallback:
+     - Wenn Spool.initialWeight und Spool.spoolWeight existieren, dann initialRemaining = initialWeight
+     - Wenn Spool.remainingWeight historisch existiert, nutze das als Startwert
+3. Append UsageEvent (type consume).
+4. Berechne neuen remaining = max(0, oldRemaining - grams)
+5. Upsert spool_stats mit remaining und updatedAt.
+
+Wichtig:
+- Für Korrekturen: adjustment Events erlauben. Dazu zweite Methode:
+  - adjustRemaining(spoolLocalId: string, newRemaining: number, source, note?)
+  - Implementiere als adjustment Event, und setze spool_stats direkt auf newRemaining.
+
+### Schritt 4.7: View Queries liefern remainingWeight aus spool_stats
+Update:
+- /src/data/repositories/SpoolRepository.ts getAllView und getByLocalIdView (falls existiert)
+
+Änderung:
+- JOIN oder zusätzliche Query auf spool_stats, so dass SpoolView.remainingWeight aus spool_stats kommt.
+- Falls getAllView aktuell N+1 hat, NICHT in Phase 4 fixen.
+  Minimal: zusätzliche Query nur auf spool_stats in einem Batch.
+  Phase 5 optimiert endgültig.
+
+### Schritt 4.8: Sync Verhalten für Verbrauch definieren
+Regel für Phase 4:
+- Sync verändert keine usage_events.
+- Spoolman Push/Pull bleibt wie Phase 3, aber remainingWeight kommt jetzt aus spool_stats.
+- Wenn remote remainingWeight kommt:
+  - Bei accept_remote und lokal synced: setze spool_stats auf remote remainingWeight, aber schreibe zusätzlich einen adjustment Event mit source sync.
+  - Bei conflict: kein Überschreiben.
+
+Das ist wichtig für Audit Trail.
+
+## Lieferformat
+1. Liste aller neu erstellten Dateien mit komplettem Inhalt.
+2. Liste aller geänderten Dateien mit Diff oder kompletter Datei.
+3. Kurzer Hinweis pro Datei, warum geändert.
+4. Am Ende Prüfkommandos und erwartetes Ergebnis.
+
+## Prüfkommandos am Ende ausführen und Ergebnis berichten
+1. npx tsc --noEmit
+2. rg -n "updateRemainingWeight\\(|remainingWeight.*update\\(" /home/runner/workspace/src/data/repositories/SpoolRepository.ts
+   Erwartung: keine direkte remainingWeight Mutation mehr in spools Tabelle, außer Migration-Init.
+3. rg -n "from 'expo|react-native|drizzle|sqlite|fetch|axios|nfc|camera" /home/runner/workspace/src/core/domain || true
+
+Starte jetzt mit Schritt 4.1 und liefere die komplette Phase 4 Umsetzung in einem Durchlauf.

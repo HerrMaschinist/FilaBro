@@ -7,3 +7,4 @@
 export type { Manufacturer } from "./manufacturer";
 export type { Filament } from "./filament";
 export type { Spool, SpoolView } from "./spool";
+export type { UsageEvent, UsageEventType, UsageEventSource } from "./usage";
