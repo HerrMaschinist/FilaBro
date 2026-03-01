@@ -1,0 +1,174 @@
+# FilaBro Architektur-Analyse und Refactoring-Anweisung
+
+Du analysierst ein bestehendes Expo React Native Projekt namens **FilaBro**.
+
+## Kontext
+
+FilaBro ist ein **Offline First Filamentsystem**.
+
+- SQLite lokal ist die Quelle der Wahrheit.
+- Spoolman ist ein optionaler externer Adapter.
+- Keine enge Kopplung an Spoolman.
+- Stabilität vor Cleverness.
+- Keine unnötige Komplexität.
+- Keine Marketing Sprache.
+- Nur technische Analyse.
+
+---
+
+## Bekannte Architekturprobleme
+
+1. Domain Modelle enthalten Sync technische Felder wie:
+   - syncState
+   - dirtyFields
+   - localVersion
+   - remoteVersion
+
+2. Repositories implementieren eine „Server wins“ Konfliktstrategie.
+
+3. Use Cases sind nicht klar vom Infrastructure Layer getrennt.
+
+4. Es existiert keine saubere Ports-and-Adapters Struktur.
+
+5. Sync Logik ist mit Persistenz und Domain vermischt.
+
+---
+
+# Deine Aufgabe
+
+## 1. Projektanalyse
+
+Analysiere die aktuelle Struktur unter `/src`.
+
+Identifiziere:
+
+- Architekturverletzungen
+- Enge Kopplung
+- Vermischte Verantwortlichkeiten
+- Domain-Infrastruktur-Verschmutzung
+
+---
+
+## 2. Zielarchitektur
+
+Vergleiche die aktuelle Struktur mit folgender Zielarchitektur:
+
+### Layer 1: Core Domain
+- Entitäten ohne Sync Technik
+- Value Objects
+- Fachliche Invarianten
+- Keine DB Felder
+- Keine HTTP Details
+
+### Layer 2: Application
+- Use Cases
+- Orchestrierung
+- Keine DB Details
+- Keine HTTP Details
+
+### Layer 3: Ports
+- Interfaces wie:
+  - SpoolRepository
+  - UsageEventStore
+  - ExternalFilamentSystemPort
+  - SyncStateRepository
+- Nur Verträge, keine Implementierung
+
+### Layer 4: Adapter
+- SQLite Implementierungen
+- Spoolman HTTP Client
+- QR Adapter
+- NFC Adapter
+
+### Layer 5: UI
+- Darf nur Use Cases aufrufen
+- Kein direkter Repo Zugriff
+
+---
+
+## 3. Verbesserungsformat
+
+Jede Verbesserung muss enthalten:
+
+- Problem
+- Risiko
+- Konkrete Refactoring Maßnahme
+- Betroffene Dateien
+- Warum stabiler
+
+Keine komplette Neuschreibung.
+Nur inkrementelle Schritte.
+
+---
+
+## 4. Neue Konfliktstrategie definieren
+
+Offline ist Source of Truth.
+
+Regeln:
+
+- Lokale Änderungen dürfen niemals implizit überschrieben werden.
+- Externe Änderungen müssen als Merge Vorschlag behandelt werden.
+- Keine Server Wins Logik.
+- Keine implizite Remote Dominanz.
+
+Beschreibe:
+
+- Welche Codebereiche angepasst werden müssen
+- Welche Interfaces neu eingeführt werden
+- Wie Sync State vom Domain Modell getrennt wird
+- Wie Konflikte technisch gespeichert werden
+
+---
+
+## 5. Verbrauchsmodell prüfen
+
+Analysiere:
+
+Ist Verbrauch als Zustand oder als Ereignis modelliert?
+
+Falls Zustand:
+
+Vorschlag:
+- Append-only UsageEvent Tabelle
+- Projektion zur Restgewichtsberechnung
+- Keine direkte Mutation des Restgewichts
+
+Beschreibe:
+- Migrationsstrategie
+- Betroffene Dateien
+- Performance Auswirkungen
+
+---
+
+## 6. Skalierung auf 1000+ Spulen
+
+Prüfe:
+
+- Indizes
+- Paging
+- Query Strategien
+- Scan Performance
+- Memory Verhalten
+- Sync Batch Verhalten
+
+Gib konkrete Optimierungen mit Datei- und Codebezug.
+
+---
+
+## 7. Ergebnisformat
+
+Antworte strukturiert in diesen Abschnitten:
+
+- Aktuelle Architekturprobleme
+- Kritische Risiken
+- Inkrementelle Refactoring Schritte in Reihenfolge
+- Neue Zielstruktur als Ordnerbaum
+- Sync Strategie neu definiert
+- Konfliktauflösung technisch beschrieben
+- Performance und Skalierung
+
+Nur technische Analyse.
+Keine Euphorie.
+Keine allgemeine Theoriebeschreibung.
+Nur konkrete Maßnahmen mit Projektbezug.
