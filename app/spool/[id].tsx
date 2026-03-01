@@ -174,6 +174,14 @@ export default function SpoolDetailScreen() {
           </Pressable>
           <Pressable
             style={s.actionBtn}
+            onPress={() => spool._localId && router.push(`/edit-spool?localId=${spool._localId}`)}
+            hitSlop={12}
+            testID="edit-spool"
+          >
+            <Ionicons name="create-outline" size={22} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            style={s.actionBtn}
             onPress={handleDelete}
             hitSlop={12}
             testID="delete-spool"
@@ -259,9 +267,20 @@ export default function SpoolDetailScreen() {
       {spool.filament && (
         <GlassCard style={s.glassCard}>
           <View style={s.cardInner}>
-            <Text style={[s.cardTitle, { color: colors.textSecondary }]}>
-              {t("detail.filament")}
-            </Text>
+            <View style={s.cardTitleRow}>
+              <Text style={[s.cardTitle, { color: colors.textSecondary, marginBottom: 0 }]}>
+                {t("detail.filament")}
+              </Text>
+              {spool._filamentLocalId && (
+                <Pressable
+                  onPress={() => router.push(`/edit-filament?localId=${spool._filamentLocalId}`)}
+                  hitSlop={8}
+                  testID="edit-filament"
+                >
+                  <Ionicons name="create-outline" size={16} color={colors.accent} />
+                </Pressable>
+              )}
+            </View>
             <InfoRow label={t("detail.name")} value={spool.filament.name} colors={colors} isDark={isDark} />
             <InfoRow label={t("detail.material")} value={spool.filament.material} colors={colors} isDark={isDark} />
             {spool.filament.vendor?.name && (
@@ -275,6 +294,12 @@ export default function SpoolDetailScreen() {
             )}
             {spool.filament.spool_weight !== undefined && (
               <InfoRow label={t("detail.spool_empty")} value={`${spool.filament.spool_weight}g`} colors={colors} isDark={isDark} />
+            )}
+            {spool.filament.paid_price !== undefined && (
+              <InfoRow label={t("form.paid_price")} value={String(spool.filament.paid_price)} colors={colors} isDark={isDark} />
+            )}
+            {spool.filament.shop && (
+              <InfoRow label={t("form.shop")} value={spool.filament.shop} colors={colors} isDark={isDark} />
             )}
           </View>
         </GlassCard>
@@ -422,6 +447,12 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       fontFamily: "Inter_600SemiBold",
       letterSpacing: 1,
       textTransform: "uppercase" as const,
+      marginBottom: 12,
+    },
+    cardTitleRow: {
+      flexDirection: "row" as const,
+      alignItems: "center",
+      justifyContent: "space-between",
       marginBottom: 12,
     },
     barHeader: {

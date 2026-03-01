@@ -231,6 +231,8 @@ const de = {
     lot: "Chargennummer",
     initial_weight: "Startgewicht (g)",
     location: "Lagerort",
+    paid_price: "Kaufpreis",
+    shop: "Shop / Händler",
     optional: "optional",
   },
   validation: {

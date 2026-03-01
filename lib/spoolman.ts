@@ -14,6 +14,10 @@ export interface Filament {
   weight?: number;
   spool_weight?: number;
   comment?: string;
+  /** Local-only: purchase price. Not from Spoolman API. */
+  paid_price?: number;
+  /** Local-only: shop/vendor name. Not from Spoolman API. */
+  shop?: string;
 }
 
 export interface Spool {
@@ -30,6 +34,14 @@ export interface Spool {
   first_used?: string;
   /** Internal bridge field: SQLite local_id. Not from Spoolman API. */
   _localId?: string;
+  /** Internal bridge field: local filament_local_id. Not from Spoolman API. */
+  _filamentLocalId?: string;
+  /** Internal bridge field: local display_name. Not from Spoolman API. */
+  _displayName?: string;
+  /** Internal bridge field: local qr_code. Not from Spoolman API. */
+  _qrCode?: string;
+  /** Internal bridge field: local nfc_tag_id. Not from Spoolman API. */
+  _nfcTagId?: string;
   /** Internal bridge field: local favorite state. Not from Spoolman API. */
   _isFavorite?: boolean;
   registered?: string;

@@ -230,6 +230,8 @@ const en = {
     lot: "Lot number",
     initial_weight: "Initial weight (g)",
     location: "Storage location",
+    paid_price: "Purchase price",
+    shop: "Shop / vendor",
     optional: "optional",
   },
   validation: {

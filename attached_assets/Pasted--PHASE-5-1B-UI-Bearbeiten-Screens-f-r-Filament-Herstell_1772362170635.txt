@@ -1,0 +1,134 @@
+# PHASE 5.1B – UI: Bearbeiten Screens für Filament, Hersteller, Spule (ohne Redesign)
+
+Kontext
+Phase 5.1 NFC Zentrierung ist gefixt.
+Phase 5.1A ist umgesetzt:
+- Filament hat paidPrice und shop
+- DB Migration v6 ist drin
+- Repos haben updateLocal(localId, patch)
+- UseCases existieren:
+  - /src/core/application/FilamentUseCase.ts
+  - /src/core/application/ManufacturerUseCase.ts
+  - /src/core/application/SpoolEditUseCase.ts
+
+Ziel Phase 5.1B
+1. In der App kann man Filament, Hersteller und Spule bearbeiten.
+2. Filament Edit enthält neue Felder paidPrice und shop.
+3. Keine neuen Datenmodelle, keine Architekturänderung.
+4. UI bleibt optisch im bestehenden Stil, nur Funktionen ergänzen.
+5. Nach dem Speichern muss die Liste und das Detail korrekt aktualisieren.
+6. App muss danach bauen und laufen.
+
+Nicht verhandelbar
+1. Keine großen UI Umbauten.
+2. Keine neue Navigation Architektur.
+3. Nur minimal notwendige Komponenten.
+4. TypeScript am Ende 0 Fehler.
+5. Nach Umsetzung App einmal neu starten, damit Metro sauber ist.
+
+Arbeitsweise
+Du arbeitest strikt in Schritten.
+Pro Schritt:
+- Ziel
+- geänderte Dateien mit Pfad und Diff oder kompletter Datei
+- kurzer Grund
+- danach Verifikation
+
+Schritt 1: Edit Entry Points finden und festlegen
+1. Finde die Detail Screens:
+- Spule Detail Screen (da wo Restgewicht, Speichern, Filament Details stehen)
+- Filament Detail View falls vorhanden
+- Hersteller Detail View falls vorhanden
+
+2. Finde vorhandene Navigation:
+- Expo Router oder React Navigation
+- Prüfe app/(tabs) und app/ sonstige Routen
+
+3. Entscheide die Entry Points:
+- In Spule Detail Screen: Button oder Icon Bearbeiten
+- In Filament Sektion der Spule Detail Screen: Tip auf Filament Karte öffnet Filament Edit
+- In Hersteller Zeile: Tip öffnet Hersteller Edit
+
+Schritt 2: Edit Screens anlegen
+Erstelle diese Dateien, passend zur bestehenden Router Struktur:
+
+- /app/filament/edit.tsx
+- /app/manufacturer/edit.tsx
+- /app/spool/edit.tsx
+
+Falls das Projekt parameterisierte Routen nutzt, dann so:
+- /app/filament/[localId]/edit.tsx
+- /app/manufacturer/[localId]/edit.tsx
+- /app/spool/[localId]/edit.tsx
+
+Wichtig
+- Nutze exakt den Router Stil, den das Projekt bereits nutzt.
+- Keine zweite Navigationslösung einführen.
+
+Schritt 3: Form State und Validierung
+Für jede Edit Page:
+- initial state aus Repository View laden, oder aus AppContext falls vorhanden
+- Speichern Button disabled wenn required Felder leer
+
+Validierungsregeln minimal
+Filament:
+- name required
+- material optional oder required je nach bestehender Logik
+- paidPrice optional, wenn gesetzt muss number und >= 0 sein
+- shop optional
+Manufacturer:
+- name required
+Spool:
+- displayName optional
+- archived boolean
+- isFavorite boolean
+- qrCode optional
+- nfcTagId optional
+- lotNr optional
+- spoolWeight optional number >= 0
+- initialWeight optional number >= 0
+- comment optional
+
+Schritt 4: UseCases korrekt anbinden
+Edit Screens müssen speichern über:
+- FilamentUseCase.updateFilament(localId, patch)
+- ManufacturerUseCase.updateManufacturer(localId, patch)
+- SpoolEditUseCase.updateSpool(localId, patch)
+
+Keine direkten Repository Calls aus UI.
+Wenn AppContext bereits UseCases kapselt, dann darüber.
+Wenn nicht, dann UseCases direkt importieren, aber konsistent mit Phase 1 Boundary.
+
+Schritt 5: Nach Speichern UI refreshen
+Erwartung:
+- Nach speichern zurück navigieren.
+- Spule Detail Screen zeigt aktualisierte Werte.
+- Spulen Liste zeigt aktualisierte Anzeige.
+- Paging Cache bleibt konsistent.
+
+Implementierung:
+- AppContext bekommt 3 neue Methoden:
+  - updateFilament(localId, patch)
+  - updateManufacturer(localId, patch)
+  - updateSpool(localId, patch)
+Diese rufen UseCases und triggern danach ein lokales Refresh:
+- Spool Detail: reload der betroffenen SpoolView
+- Spool List: entweder Eintrag im State patchen oder first page reload falls einfacher
+
+Wichtig
+- Kein Full Reset zwingend, aber konsistent und ohne stale UI.
+
+Schritt 6: Filament Preis und Shop im UI anzeigen
+1. In Filament Detail Block in der Spule Detail View:
+- Zeige shop falls gesetzt
+- Zeige paidPrice falls gesetzt mit 2 Nachkommastellen
+- Keine Währungserkennung, nur Zahl anzeigen
+
+2. Optional: In Filament Edit Screen die Felder:
+- Preis bezahlt (number input)
+- Shop (text input)
+
+Schritt 7: Abschluss Checks
+1. TypeScript:
+```bash
+npx tsc --noEmit

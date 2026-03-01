@@ -117,6 +117,7 @@ export const DEMO_SPOOLS: Spool[] = [
     last_used: "2025-01-20",
     registered: "2024-11-10",
     _localId: "demo-1",
+    _filamentLocalId: "demo-f1",
     _isFavorite: true,
   },
   {
@@ -139,6 +140,7 @@ export const DEMO_SPOOLS: Spool[] = [
     last_used: "2025-02-10",
     registered: "2024-11-28",
     _localId: "demo-2",
+    _filamentLocalId: "demo-f2",
     _isFavorite: false,
   },
   {
@@ -160,6 +162,7 @@ export const DEMO_SPOOLS: Spool[] = [
     last_used: "2025-02-14",
     registered: "2025-01-02",
     _localId: "demo-3",
+    _filamentLocalId: "demo-f3",
     _isFavorite: false,
   },
   {
@@ -182,6 +185,7 @@ export const DEMO_SPOOLS: Spool[] = [
     last_used: "2025-02-22",
     registered: "2025-01-18",
     _localId: "demo-4",
+    _filamentLocalId: "demo-f4",
     _isFavorite: true,
   },
   {
@@ -201,6 +205,7 @@ export const DEMO_SPOOLS: Spool[] = [
     used_weight: 0,
     registered: "2025-02-20",
     _localId: "demo-5",
+    _filamentLocalId: "demo-f5",
     _isFavorite: false,
   },
   {
@@ -224,6 +229,7 @@ export const DEMO_SPOOLS: Spool[] = [
     last_used: "2024-12-30",
     registered: "2024-06-01",
     _localId: "demo-6",
+    _filamentLocalId: "demo-f6",
     _isFavorite: false,
   },
 ];

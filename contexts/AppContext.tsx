@@ -34,10 +34,14 @@ import { CatalogUseCase } from "@/src/core/application/CatalogUseCase";
 import { SyncUseCase } from "@/src/core/application/SyncUseCase";
 import { SpoolUseCase } from "@/src/core/application/SpoolUseCase";
 import { WeightUseCase } from "@/src/core/application/WeightUseCase";
+import { FilamentUseCase } from "@/src/core/application/FilamentUseCase";
+import { ManufacturerUseCase } from "@/src/core/application/ManufacturerUseCase";
+import { SpoolEditUseCase } from "@/src/core/application/SpoolEditUseCase";
 import {
   SpoolListUseCase,
   DEFAULT_PAGE_SIZE,
 } from "@/src/core/application/SpoolListUseCase";
+import type { UpdateFilamentPatch, UpdateManufacturerPatch, UpdateSpoolPatch } from "@/src/core/ports";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
 import {
@@ -62,6 +66,8 @@ function toViewSpool(sv: SpoolView): Spool {
         weight: sv.filament.weight,
         spool_weight: sv.filament.spoolWeight,
         comment: sv.filament.comment,
+        paid_price: sv.filament.paidPrice,
+        shop: sv.filament.shop,
       }
     : { id: 0, name: "Unknown", material: "Unknown" };
 
@@ -79,6 +85,10 @@ function toViewSpool(sv: SpoolView): Spool {
     first_used: sv.firstUsed,
     registered: sv.registered,
     _localId: sv.localId,
+    _filamentLocalId: sv.filamentLocalId,
+    _displayName: sv.displayName,
+    _qrCode: sv.qrCode,
+    _nfcTagId: sv.nfcTagId,
     _isFavorite: sv.isFavorite,
   };
 }
@@ -181,6 +191,10 @@ interface AppContextValue {
   deleteFilament: (localId: string) => Promise<boolean>;
   deleteSpool: (localId: string) => Promise<boolean>;
   reloadCatalog: () => Promise<void>;
+  reloadSpoolsLocal: () => Promise<void>;
+  updateFilament: (localId: string, patch: UpdateFilamentPatch) => Promise<DomainFilament | null>;
+  updateManufacturer: (localId: string, patch: UpdateManufacturerPatch) => Promise<Manufacturer | null>;
+  updateSpool: (localId: string, patch: UpdateSpoolPatch) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -527,6 +541,102 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFilaments(fils);
   }, []);
 
+  const reloadSpoolsLocal = useCallback(async () => {
+    await loadFirstPage();
+  }, [loadFirstPage]);
+
+  const updateFilament = useCallback(
+    async (localId: string, patch: UpdateFilamentPatch): Promise<DomainFilament | null> => {
+      if (!isPersistenceEnabled) {
+        const updated: DomainFilament | undefined = (() => {
+          let found: DomainFilament | undefined;
+          setFilaments((prev) =>
+            prev.map((f) => {
+              if (f.localId !== localId) return f;
+              found = {
+                ...f,
+                ...patch,
+                lastModifiedAt: Date.now(),
+              };
+              return found;
+            })
+          );
+          return found;
+        })();
+        return updated ?? null;
+      }
+      try {
+        const result = await FilamentUseCase.updateFilament(localId, patch);
+        if (result) {
+          setFilaments((prev) =>
+            prev.map((f) => (f.localId === localId ? result : f))
+          );
+        }
+        return result;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const updateManufacturer = useCallback(
+    async (localId: string, patch: UpdateManufacturerPatch): Promise<Manufacturer | null> => {
+      if (!isPersistenceEnabled) {
+        let found: Manufacturer | undefined;
+        setManufacturers((prev) =>
+          prev.map((m) => {
+            if (m.localId !== localId) return m;
+            found = { ...m, ...patch, lastModifiedAt: Date.now() };
+            return found;
+          })
+        );
+        return found ?? null;
+      }
+      try {
+        const result = await ManufacturerUseCase.updateManufacturer(localId, patch);
+        if (result) {
+          setManufacturers((prev) =>
+            prev.map((m) => (m.localId === localId ? result : m))
+          );
+        }
+        return result;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const updateSpool = useCallback(
+    async (localId: string, patch: UpdateSpoolPatch): Promise<boolean> => {
+      if (!isPersistenceEnabled) {
+        setSpools((prev) =>
+          prev.map((s) => {
+            if (s._localId !== localId) return s;
+            return {
+              ...s,
+              comment: patch.comment !== undefined ? patch.comment : s.comment,
+              lot_nr: patch.lotNr !== undefined ? patch.lotNr : s.lot_nr,
+              spool_weight: patch.spoolWeight !== undefined ? patch.spoolWeight : s.spool_weight,
+            };
+          })
+        );
+        return true;
+      }
+      try {
+        const result = await SpoolEditUseCase.updateSpool(localId, patch);
+        if (result) {
+          await loadFirstPage();
+        }
+        return !!result;
+      } catch {
+        return false;
+      }
+    },
+    [loadFirstPage]
+  );
+
   const createManufacturer = useCallback(
     async (data: CreateManufacturerData): Promise<Manufacturer | null> => {
       if (!isPersistenceEnabled) {
@@ -735,6 +845,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteFilament,
       deleteSpool,
       reloadCatalog,
+      reloadSpoolsLocal,
+      updateFilament,
+      updateManufacturer,
+      updateSpool,
     }),
     [
       serverUrl,
@@ -778,6 +892,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteFilament,
       deleteSpool,
       reloadCatalog,
+      reloadSpoolsLocal,
+      updateFilament,
+      updateManufacturer,
+      updateSpool,
     ]
   );
 

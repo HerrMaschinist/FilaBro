@@ -34,11 +34,14 @@ Preferred communication style: Simple, everyday language.
   - `app/index.tsx` — entry point, redirects based on onboarding state
   - `app/onboarding.tsx` — first-run server setup screen
   - `app/(tabs)/` — main tab group: Spools, Favorites, Scanner, Settings
-  - `app/spool/[id].tsx` — spool detail screen with glass UI and delete action
+  - `app/spool/[id].tsx` — spool detail screen with glass UI, edit/delete actions, and filament edit shortcut
   - `app/add-manufacturer.tsx` — modal form to create manufacturer
   - `app/add-filament.tsx` — modal form to create filament (with material chips, manufacturer picker)
   - `app/add-spool.tsx` — modal form to create spool (with filament picker)
-- **State Management**: React Context (`AppContext`) is the single UI-facing state boundary. Screens never call repositories or API clients directly. AppContext provides full CRUD for manufacturers, filaments, and spools with in-memory web fallback.
+  - `app/edit-spool.tsx` — modal form to edit spool (displayName, comment, lotNr, weights, qrCode, nfcTagId, archived)
+  - `app/edit-filament.tsx` — modal form to edit filament (all fields including local-only paidPrice + shop)
+  - `app/edit-manufacturer.tsx` — modal form to edit manufacturer (name, website, comment)
+- **State Management**: React Context (`AppContext`) is the single UI-facing state boundary. Screens never call repositories or API clients directly. AppContext provides full CRUD + edit for manufacturers, filaments, and spools with in-memory web fallback. Edit methods: `updateFilament`, `updateManufacturer`, `updateSpool`. Post-edit reload: `reloadCatalog`, `reloadSpoolsLocal`.
 - **Data Fetching**: TanStack Query (`@tanstack/react-query`) for server-side cache and request management
 - **Fonts**: Inter via `@expo-google-fonts/inter`
 - **Animations**: `react-native-reanimated` for spring animations — SpoolCard entry stagger (index-based delay), scanner mode pill slide, AddSheet spring+fade, PressableScale tap feedback
@@ -73,18 +76,20 @@ Three-layer architecture: API → Repository → Domain
   - spools: `displayName` text, `qrCode` text, `nfcTagId` text, `archived` int
   - spool_stats: `remaining_weight` int (Phase 4 source of truth for weight), `updated_at` int
   - usage_events: append-only weight audit log (Phase 4)
-- **Migrations**: Versioned SQL migration array in `src/data/db/client.ts`. Append-only — never edit. `CURRENT_SCHEMA_VERSION = 5`.
+- **Migrations**: Versioned SQL migration array in `src/data/db/client.ts`. Append-only — never edit. `CURRENT_SCHEMA_VERSION = 6`.
   - v1: base schema
   - v2: website, printTemp, displayName, qrCode, nfcTagId fields
   - v3: conflict_snapshots table
   - v4: usage_events + spool_stats tables; seeds spool_stats from spools.remaining_weight
   - v5: 6 performance indexes (archived, filament_local_id, qr_code, nfc_tag_id, last_modified_at, manufacturer_local_id)
+  - v6: filaments table adds `paid_price` real and `shop` text (local-only, never synced to Spoolman)
 - **Phase 5 — Batch-first sync**: `pullWithConflictPolicy()` in `SyncUseCase` now pre-fetches all manufacturer/filament/spool records in batch before the entity loop. O(6) total DB queries instead of O(5N). Uses `getMapByRemoteIds()` on each repo for O(1) map lookups.
 - **Phase 5 — JOIN views**: `SpoolRepository.getAllView()`, `getByLocalIdView()`, `getPagedView()` all use a single LEFT JOIN across spools + filaments + manufacturers + spool_stats. Eliminates N+1 query pattern.
 - **Phase 5 — Pagination**: `SpoolListUseCase` provides `listSpoolsPage(page, pageSize)`. AppContext exposes `loadNextPage()`, `hasMoreSpools`, `isLoadingMoreSpools`. FlatList in index.tsx uses `onEndReached` to load more.
 - **Phase 5 — Indexed lookups**: `findByQrCode(qr)` and `findByNfcTagId(tagId)` use O(log n) indexed queries. Exposed in AppContext as `findSpoolByQrCode` / `findSpoolByNfcTagId`.
 - **Weight source of truth**: `spool_stats.remaining_weight` (Phase 4+). `spools.remaining_weight` is legacy/init-only and used for remote identity comparison in sync.
 - **SpoolSyncRecord** extended with all identity-check fields — no second `getByLocalId()` needed in sync loop.
+- **Phase 5.1B — Edit UI screens**: Three edit modal screens (`edit-spool`, `edit-filament`, `edit-manufacturer`) accessible from the spool detail. Spool detail has a pencil icon (→ edit-spool) and a filament card edit icon (→ edit-filament). After save, `reloadCatalog()` + `reloadSpoolsLocal()` refresh state from the local DB. New bridge fields in `lib/spoolman.ts Spool`: `_filamentLocalId`, `_displayName`, `_qrCode`, `_nfcTagId`. Filament's `paidPrice`/`shop` displayed in spool detail.
 - **Web demo mode**: When `isPersistenceEnabled === false`, AppContext seeds demo data. All CRUD and weight edits work in-memory. A `WebPreviewBanner` shows on web.
 - **Error classes** (`src/data/api/errors.ts`): `NetworkError`, `TimeoutError`, `ApiError`, `ParseError`, `UnsupportedFeatureError` + `classifyFetchError()` utility.
 
