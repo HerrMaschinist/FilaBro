@@ -1,116 +1,50 @@
 /**
- * Domain Layer — pure TypeScript interfaces.
- * No DB imports, no API imports. Only business types.
+ * src/domain/models.ts
+ *
+ * Phase 2 backward-compatibility shim.
+ * All types are now defined in src/core/domain and src/core/domain/sync.
+ * This file re-exports them so that existing imports continue to work
+ * without modification until each file is migrated to import from
+ * src/core/domain directly.
+ *
+ * Do NOT add new types here. Add them to src/core/domain/*.
  */
 
-export type SyncState = "synced" | "dirty" | "pending_push" | "conflict";
+// Core domain entity types
+export type { Manufacturer } from "@/src/core/domain/manufacturer";
+export type { Filament } from "@/src/core/domain/filament";
+export type { Spool, SpoolView } from "@/src/core/domain/spool";
 
-export interface Manufacturer {
-  localId: string;
-  remoteId?: number;
-  name: string;
-  website?: string;
-  comment?: string;
-  syncState: SyncState;
-  lastModifiedAt: number; // unix ms
-}
+// Sync state type (re-exported for adapter-layer backward compat)
+export type { SyncState } from "@/src/core/domain/sync";
+
+// Legacy types kept here; none are currently imported elsewhere.
 
 export interface MaterialType {
-  id: string; // e.g. "PLA", "PETG", "ABS"
+  id: string;
   label: string;
 }
 
-export interface Filament {
-  localId: string;
-  remoteId?: number;
-  name: string;
-  material: string;
-  colorHex?: string;
-  manufacturerLocalId?: string;
-  /** Total weight of filament on a full spool in grams */
-  weight?: number;
-  /** Weight of empty spool in grams */
-  spoolWeight?: number;
-  printTempMin?: number;
-  printTempMax?: number;
-  density?: number;
-  comment?: string;
-  syncState: SyncState;
-  lastModifiedAt: number; // unix ms
-}
-
-export interface Spool {
-  localId: string;
-  remoteId?: number;
-  filamentLocalId?: string;
-  /** Remaining filament weight in grams */
-  remainingWeight?: number;
-  /** Initial filament weight when spool was new */
-  initialWeight?: number;
-  /** Weight of empty spool */
-  spoolWeight?: number;
-  /** Used filament weight */
-  usedWeight?: number;
-  comment?: string;
-  archived: boolean;
-  displayName?: string;
-  qrCode?: string;
-  nfcTagId?: string;
-  lotNr?: string;
-  lastUsed?: string;
-  firstUsed?: string;
-  registered?: string;
-  /** Local-only field, never sent to Spoolman */
-  isFavorite: boolean;
-  syncState: SyncState;
-  /**
-   * JSON-encoded string[] of field names that have local uncommitted changes.
-   * Example: '["remaining_weight"]'
-   */
-  dirtyFields?: string;
-  /** Incremented on every local write */
-  localVersion: number;
-  /** Last known remote version (Spoolman does not provide explicit versions,
-   *  we use the server's last_modified as a proxy) */
-  remoteVersion?: number;
-  lastModifiedAt: number; // unix ms
-}
-
-/**
- * Spool with its hydrated Filament and Manufacturer relationships.
- * Used in UI layers.
- */
-export interface SpoolView extends Spool {
-  filament?: Filament & { manufacturer?: Manufacturer };
-}
-
-/**
- * Tracks when we last pulled/pushed each entity type.
- */
 export interface SyncMeta {
   entityType: "spool" | "filament" | "manufacturer";
-  lastPullAt?: number; // unix ms
-  lastPushAt?: number; // unix ms
+  lastPullAt?: number;
+  lastPushAt?: number;
   serverUrl: string;
 }
 
-/**
- * Prepared for future native widget integration.
- * Widget reads a serialized snapshot of favorite spools.
- */
 export interface WidgetSnapshot {
   generatedAt: number;
-  spools: Pick<SpoolView, "localId" | "remoteId" | "remainingWeight" | "initialWeight" | "isFavorite">[];
+  spools: Pick<
+    import("@/src/core/domain/spool").SpoolView,
+    "localId" | "remoteId" | "remainingWeight" | "initialWeight" | "isFavorite"
+  >[];
 }
 
-/**
- * Optional: prepared for printer profiles feature.
- */
 export interface PrinterProfile {
   localId: string;
   name: string;
   nozzleDiameter?: number;
   bedTemp?: number;
   nozzleTemp?: number;
-  compatibleMaterials?: string; // JSON array string
+  compatibleMaterials?: string;
 }

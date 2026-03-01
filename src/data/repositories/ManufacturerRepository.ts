@@ -7,6 +7,28 @@ function generateLocalId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 }
 
+/**
+ * Internal row type that includes sync fields.
+ * Used only within this file for operations that need syncState.
+ * Never exposed through the public API.
+ */
+type ManufacturerRecord = Manufacturer & { syncState: string };
+
+function toManufacturerRecord(
+  row: typeof manufacturers.$inferSelect
+): ManufacturerRecord {
+  return {
+    localId: row.localId,
+    remoteId: row.remoteId ?? undefined,
+    name: row.name,
+    website: row.website ?? undefined,
+    comment: row.comment ?? undefined,
+    lastModifiedAt: row.lastModifiedAt,
+    syncState: row.syncState,
+  };
+}
+
+/** Maps a DB row to the clean domain Manufacturer (no sync fields). */
 function toManufacturer(row: typeof manufacturers.$inferSelect): Manufacturer {
   return {
     localId: row.localId,
@@ -14,7 +36,6 @@ function toManufacturer(row: typeof manufacturers.$inferSelect): Manufacturer {
     name: row.name,
     website: row.website ?? undefined,
     comment: row.comment ?? undefined,
-    syncState: row.syncState as Manufacturer["syncState"],
     lastModifiedAt: row.lastModifiedAt,
   };
 }
@@ -70,13 +91,19 @@ export const ManufacturerRepository = {
       comment?: string;
     }
   ): Promise<Manufacturer | null> {
-    const existing = await this.getByLocalId(localId);
-    if (!existing) return null;
+    // Query raw row to access syncState (not on domain Manufacturer)
+    const rows = await getDb()
+      .select()
+      .from(manufacturers)
+      .where(eq(manufacturers.localId, localId))
+      .limit(1);
+    if (!rows[0]) return null;
 
+    const existing = toManufacturerRecord(rows[0]);
     const now = Date.now();
     const payload: Record<string, unknown> = { lastModifiedAt: now };
-    if (existing.syncState === "synced") payload.syncState = "dirty";
 
+    if (existing.syncState === "synced") payload.syncState = "dirty";
     if (data.name !== undefined) payload.name = data.name;
     if (data.website !== undefined) payload.website = data.website;
     if (data.comment !== undefined) payload.comment = data.comment;
@@ -87,17 +114,19 @@ export const ManufacturerRepository = {
       .where(eq(manufacturers.localId, localId));
 
     return {
-      ...existing,
-      ...(data.name !== undefined && { name: data.name }),
-      ...(data.website !== undefined && { website: data.website || undefined }),
-      ...(data.comment !== undefined && { comment: data.comment || undefined }),
-      syncState: existing.syncState === "synced" ? "dirty" : existing.syncState,
+      localId: existing.localId,
+      remoteId: existing.remoteId,
+      name: data.name !== undefined ? data.name : existing.name,
+      website:
+        data.website !== undefined ? data.website || undefined : existing.website,
+      comment:
+        data.comment !== undefined ? data.comment || undefined : existing.comment,
       lastModifiedAt: now,
     };
   },
 
   async deleteByLocalId(localId: string): Promise<boolean> {
-    const result = await getDb()
+    await getDb()
       .delete(manufacturers)
       .where(eq(manufacturers.localId, localId));
     return true;
@@ -123,12 +152,13 @@ export const ManufacturerRepository = {
           lastModifiedAt: now,
         })
         .where(eq(manufacturers.localId, existing.localId));
+
       return {
-        ...existing,
+        localId: existing.localId,
+        remoteId: data.remoteId,
         name: data.name,
-        website: data.website,
-        comment: data.comment,
-        syncState: "synced",
+        website: data.website ?? undefined,
+        comment: data.comment ?? undefined,
         lastModifiedAt: now,
       };
     }

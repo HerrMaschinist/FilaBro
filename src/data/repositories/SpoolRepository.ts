@@ -11,6 +11,9 @@
  *   If local syncState is 'pending_push' AND server has a different remaining_weight:
  *     → conflict logged, server wins (last-write-wins from server perspective).
  *   Rationale: Spoolman has no versioning; we cannot determine who wrote last.
+ *
+ * Public API returns Spool (clean domain type, no sync fields).
+ * getDirty() and getRecordByLocalId() return SpoolSyncRecord (adapter-layer only).
  */
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
@@ -23,6 +26,22 @@ function generateLocalId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 }
 
+/**
+ * Adapter-layer type that includes sync metadata.
+ * Only returned by getDirty() and getRecordByLocalId().
+ * Never passed to the UI or use-case layer as a Spool.
+ */
+export interface SpoolSyncRecord {
+  localId: string;
+  remoteId?: number;
+  remainingWeight?: number;
+  syncState: string;
+  dirtyFields: string[];
+  localVersion: number;
+  remoteVersion?: number;
+}
+
+/** Maps a DB row to the clean domain Spool (no sync fields). */
 function toSpool(row: typeof spools.$inferSelect): Spool {
   return {
     localId: row.localId,
@@ -42,11 +61,28 @@ function toSpool(row: typeof spools.$inferSelect): Spool {
     firstUsed: row.firstUsed ?? undefined,
     registered: row.registered ?? undefined,
     isFavorite: row.isFavorite === 1,
-    syncState: row.syncState as Spool["syncState"],
-    dirtyFields: row.dirtyFields ?? undefined,
+    lastModifiedAt: row.lastModifiedAt,
+  };
+}
+
+/** Maps a DB row to SpoolSyncRecord (includes sync metadata). */
+function toSpoolSyncRecord(row: typeof spools.$inferSelect): SpoolSyncRecord {
+  let dirtyFields: string[] = [];
+  if (row.dirtyFields) {
+    try {
+      dirtyFields = JSON.parse(row.dirtyFields) as string[];
+    } catch {
+      dirtyFields = [];
+    }
+  }
+  return {
+    localId: row.localId,
+    remoteId: row.remoteId ?? undefined,
+    remainingWeight: row.remainingWeight ?? undefined,
+    syncState: row.syncState,
+    dirtyFields,
     localVersion: row.localVersion,
     remoteVersion: row.remoteVersion ?? undefined,
-    lastModifiedAt: row.lastModifiedAt,
   };
 }
 
@@ -92,6 +128,16 @@ export const SpoolRepository = {
     return rows[0] ? toSpool(rows[0]) : null;
   },
 
+  /** Returns the sync record for a spool (adapter-layer use only). */
+  async getRecordByLocalId(localId: string): Promise<SpoolSyncRecord | null> {
+    const rows = await getDb()
+      .select()
+      .from(spools)
+      .where(eq(spools.localId, localId))
+      .limit(1);
+    return rows[0] ? toSpoolSyncRecord(rows[0]) : null;
+  },
+
   async getByRemoteId(remoteId: number): Promise<Spool | null> {
     const rows = await getDb()
       .select()
@@ -124,12 +170,16 @@ export const SpoolRepository = {
     return view;
   },
 
-  async getDirty(): Promise<Spool[]> {
+  /**
+   * Returns all spools that need to be pushed to the server.
+   * Returns SpoolSyncRecord (includes sync metadata) for adapter-layer use.
+   */
+  async getDirty(): Promise<SpoolSyncRecord[]> {
     const rows = await getDb()
       .select()
       .from(spools)
       .where(inArray(spools.syncState, ["dirty", "pending_push"]));
-    return rows.map(toSpool);
+    return rows.map(toSpoolSyncRecord);
   },
 
   /**
@@ -152,9 +202,9 @@ export const SpoolRepository = {
     registered?: string;
   }): Promise<Spool> {
     const now = Date.now();
-    const existing = await this.getByRemoteId(data.remoteId);
 
-    const remotePayload = {
+    // DB payload uses null to clear optional fields in SQLite
+    const dbPayload = {
       filamentLocalId: data.filamentLocalId ?? null,
       remainingWeight: data.remainingWeight ?? null,
       initialWeight: data.initialWeight ?? null,
@@ -169,10 +219,18 @@ export const SpoolRepository = {
       lastModifiedAt: now,
     };
 
-    if (existing) {
+    const existingRows = await getDb()
+      .select()
+      .from(spools)
+      .where(eq(spools.remoteId, data.remoteId))
+      .limit(1);
+
+    if (existingRows[0]) {
+      const existing = existingRows[0];
+
       if (
         existing.syncState === "pending_push" &&
-        existing.remainingWeight !== data.remainingWeight
+        existing.remainingWeight !== (data.remainingWeight ?? null)
       ) {
         if (__DEV__) {
           console.log(
@@ -185,21 +243,33 @@ export const SpoolRepository = {
       await getDb()
         .update(spools)
         .set({
-          ...remotePayload,
+          ...dbPayload,
           syncState: "synced",
           dirtyFields: null,
           localVersion: existing.localVersion + 1,
         })
         .where(eq(spools.localId, existing.localId));
 
+      // Domain return uses undefined (no null in domain types)
       return {
-        ...existing,
-        ...remotePayload,
+        localId: existing.localId,
+        remoteId: data.remoteId,
+        filamentLocalId: data.filamentLocalId ?? undefined,
+        remainingWeight: data.remainingWeight ?? undefined,
+        initialWeight: data.initialWeight ?? undefined,
+        spoolWeight: data.spoolWeight ?? undefined,
+        usedWeight: data.usedWeight ?? undefined,
+        comment: data.comment ?? undefined,
         archived: !!data.archived,
-        isFavorite: existing.isFavorite,
-        syncState: "synced",
-        dirtyFields: undefined,
-        localVersion: existing.localVersion + 1,
+        displayName: existing.displayName ?? undefined,
+        qrCode: existing.qrCode ?? undefined,
+        nfcTagId: existing.nfcTagId ?? undefined,
+        lotNr: data.lotNr ?? undefined,
+        lastUsed: data.lastUsed ?? undefined,
+        firstUsed: data.firstUsed ?? undefined,
+        registered: data.registered ?? undefined,
+        isFavorite: existing.isFavorite === 1,
+        lastModifiedAt: now,
       };
     }
 
@@ -207,7 +277,7 @@ export const SpoolRepository = {
     const insert: InsertSpool = {
       localId,
       remoteId: data.remoteId,
-      ...remotePayload,
+      ...dbPayload,
       isFavorite: 0,
       syncState: "synced",
       dirtyFields: null,
@@ -225,9 +295,15 @@ export const SpoolRepository = {
     localId: string,
     remainingWeight: number
   ): Promise<Spool | null> {
-    const existing = await this.getByLocalId(localId);
-    if (!existing) return null;
+    // Query raw row to access localVersion (not on domain Spool)
+    const rows = await getDb()
+      .select()
+      .from(spools)
+      .where(eq(spools.localId, localId))
+      .limit(1);
+    if (!rows[0]) return null;
 
+    const existing = rows[0];
     const dirtyFields = JSON.stringify(["remaining_weight"]);
     const now = Date.now();
 
@@ -243,11 +319,8 @@ export const SpoolRepository = {
       .where(eq(spools.localId, localId));
 
     return {
-      ...existing,
+      ...toSpool(existing),
       remainingWeight,
-      syncState: "pending_push",
-      dirtyFields,
-      localVersion: existing.localVersion + 1,
       lastModifiedAt: now,
     };
   },

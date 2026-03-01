@@ -456,7 +456,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           name: data.name,
           website: data.website,
           comment: data.comment,
-          syncState: "dirty",
           lastModifiedAt: Date.now(),
         };
         setManufacturers((prev) => [...prev, m]);
@@ -485,7 +484,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           weight: data.weight,
           spoolWeight: data.spoolWeight,
           comment: data.comment,
-          syncState: "dirty",
           lastModifiedAt: Date.now(),
         };
         setFilaments((prev) => [...prev, f]);

@@ -157,6 +157,7 @@ export async function pull(baseUrl: string): Promise<SyncResult> {
  */
 export async function push(baseUrl: string): Promise<SyncResult> {
   const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, errors: [] };
+  // getDirty() returns SpoolSyncRecord[] — dirtyFields is already a parsed string[]
   const dirtySpools = await SpoolRepository.getDirty();
   log(`push() — ${dirtySpools.length} dirty spools`);
 
@@ -166,9 +167,8 @@ export async function push(baseUrl: string): Promise<SyncResult> {
       continue;
     }
 
-    const dirty: string[] = spool.dirtyFields
-      ? (JSON.parse(spool.dirtyFields) as string[])
-      : ["remaining_weight"];
+    const dirty: string[] =
+      spool.dirtyFields.length > 0 ? spool.dirtyFields : ["remaining_weight"];
 
     try {
       if (dirty.includes("remaining_weight") && spool.remainingWeight !== undefined) {
@@ -214,22 +214,24 @@ export async function sync(baseUrl: string): Promise<SyncResult> {
 /**
  * Push a single spool by its localId.
  * Used for immediate save after weight update.
+ * Uses getRecordByLocalId() to access sync metadata.
  */
 export async function pushOne(
   baseUrl: string,
   localId: string
 ): Promise<void> {
-  const spool = await SpoolRepository.getByLocalId(localId);
-  if (!spool || !spool.remoteId) return;
-  if (spool.syncState !== "pending_push" && spool.syncState !== "dirty") return;
+  // Use getRecordByLocalId to access syncState (not on domain Spool)
+  const record = await SpoolRepository.getRecordByLocalId(localId);
+  if (!record || !record.remoteId) return;
+  if (record.syncState !== "pending_push" && record.syncState !== "dirty") return;
 
-  log(`pushOne remoteId=${spool.remoteId} remaining=${spool.remainingWeight}`);
+  log(`pushOne remoteId=${record.remoteId} remaining=${record.remainingWeight}`);
 
   try {
-    await SpoolmanClient.patchSpool(baseUrl, spool.remoteId, {
-      remaining_weight: spool.remainingWeight,
+    await SpoolmanClient.patchSpool(baseUrl, record.remoteId, {
+      remaining_weight: record.remainingWeight,
     });
-    await SpoolRepository.markSynced(spool.localId);
+    await SpoolRepository.markSynced(record.localId);
     log(`  ✓ pushOne done`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

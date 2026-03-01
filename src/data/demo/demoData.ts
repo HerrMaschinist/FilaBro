@@ -11,28 +11,24 @@ export const DEMO_MANUFACTURERS: Manufacturer[] = [
     localId: "demo-m1",
     name: "Prusament",
     website: "https://prusament.com",
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
   {
     localId: "demo-m2",
     name: "eSUN",
     website: "https://www.esun3d.com",
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
   {
     localId: "demo-m3",
     name: "Polymaker",
     website: "https://polymaker.com",
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
   {
     localId: "demo-m4",
     name: "Sunlu",
     website: "https://www.sunlu.com",
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
 ];
@@ -46,7 +42,6 @@ export const DEMO_FILAMENTS: DomainFilament[] = [
     manufacturerLocalId: "demo-m1",
     weight: 1000,
     spoolWeight: 200,
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
   {
@@ -57,7 +52,6 @@ export const DEMO_FILAMENTS: DomainFilament[] = [
     manufacturerLocalId: "demo-m2",
     weight: 1000,
     spoolWeight: 230,
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
   {
@@ -68,7 +62,6 @@ export const DEMO_FILAMENTS: DomainFilament[] = [
     manufacturerLocalId: "demo-m3",
     weight: 750,
     spoolWeight: 180,
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
   {
@@ -79,7 +72,6 @@ export const DEMO_FILAMENTS: DomainFilament[] = [
     manufacturerLocalId: "demo-m1",
     weight: 500,
     spoolWeight: 150,
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
   {
@@ -90,7 +82,6 @@ export const DEMO_FILAMENTS: DomainFilament[] = [
     manufacturerLocalId: "demo-m4",
     weight: 1000,
     spoolWeight: 220,
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
   {
@@ -101,7 +92,6 @@ export const DEMO_FILAMENTS: DomainFilament[] = [
     manufacturerLocalId: "demo-m2",
     weight: 1000,
     spoolWeight: 200,
-    syncState: "synced",
     lastModifiedAt: NOW,
   },
 ];

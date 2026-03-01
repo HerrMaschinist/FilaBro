@@ -7,6 +7,33 @@ function generateLocalId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 }
 
+/**
+ * Internal row type that includes sync fields.
+ * Used only within this file for operations that need syncState.
+ * Never exposed through the public API — the public API returns Filament (no sync).
+ */
+type FilamentRecord = Filament & { syncState: string };
+
+function toFilamentRecord(row: typeof filaments.$inferSelect): FilamentRecord {
+  return {
+    localId: row.localId,
+    remoteId: row.remoteId ?? undefined,
+    name: row.name,
+    material: row.material,
+    colorHex: row.colorHex ?? undefined,
+    manufacturerLocalId: row.manufacturerLocalId ?? undefined,
+    weight: row.weight ?? undefined,
+    spoolWeight: row.spoolWeight ?? undefined,
+    printTempMin: row.printTempMin ?? undefined,
+    printTempMax: row.printTempMax ?? undefined,
+    density: row.density ?? undefined,
+    comment: row.comment ?? undefined,
+    lastModifiedAt: row.lastModifiedAt,
+    syncState: row.syncState,
+  };
+}
+
+/** Maps a DB row to the clean domain Filament (no sync fields). */
 function toFilament(row: typeof filaments.$inferSelect): Filament {
   return {
     localId: row.localId,
@@ -21,7 +48,6 @@ function toFilament(row: typeof filaments.$inferSelect): Filament {
     printTempMax: row.printTempMax ?? undefined,
     density: row.density ?? undefined,
     comment: row.comment ?? undefined,
-    syncState: row.syncState as Filament["syncState"],
     lastModifiedAt: row.lastModifiedAt,
   };
 }
@@ -89,13 +115,19 @@ export const FilamentRepository = {
       comment?: string;
     }
   ): Promise<Filament | null> {
-    const existing = await this.getByLocalId(localId);
-    if (!existing) return null;
+    // Query raw row to access syncState (not on domain Filament)
+    const rows = await getDb()
+      .select()
+      .from(filaments)
+      .where(eq(filaments.localId, localId))
+      .limit(1);
+    if (!rows[0]) return null;
 
+    const existing = toFilamentRecord(rows[0]);
     const now = Date.now();
     const payload: Record<string, unknown> = { lastModifiedAt: now };
-    if (existing.syncState === "synced") payload.syncState = "dirty";
 
+    if (existing.syncState === "synced") payload.syncState = "dirty";
     if (data.name !== undefined) payload.name = data.name;
     if (data.material !== undefined) payload.material = data.material;
     if (data.colorHex !== undefined) payload.colorHex = data.colorHex;
@@ -111,22 +143,23 @@ export const FilamentRepository = {
       .where(eq(filaments.localId, localId));
 
     return {
-      ...existing,
-      ...(data.name !== undefined && { name: data.name }),
-      ...(data.material !== undefined && { material: data.material }),
-      ...(data.colorHex !== undefined && {
-        colorHex: data.colorHex || undefined,
-      }),
-      ...(data.manufacturerLocalId !== undefined && {
-        manufacturerLocalId: data.manufacturerLocalId || undefined,
-      }),
-      ...(data.weight !== undefined && { weight: data.weight }),
-      ...(data.spoolWeight !== undefined && { spoolWeight: data.spoolWeight }),
-      ...(data.comment !== undefined && {
-        comment: data.comment || undefined,
-      }),
-      syncState:
-        existing.syncState === "synced" ? "dirty" : existing.syncState,
+      localId: existing.localId,
+      remoteId: existing.remoteId,
+      name: data.name !== undefined ? data.name : existing.name,
+      material: data.material !== undefined ? data.material : existing.material,
+      colorHex:
+        data.colorHex !== undefined
+          ? data.colorHex || undefined
+          : existing.colorHex,
+      manufacturerLocalId:
+        data.manufacturerLocalId !== undefined
+          ? data.manufacturerLocalId || undefined
+          : existing.manufacturerLocalId,
+      weight: data.weight !== undefined ? data.weight : existing.weight,
+      spoolWeight:
+        data.spoolWeight !== undefined ? data.spoolWeight : existing.spoolWeight,
+      comment:
+        data.comment !== undefined ? data.comment || undefined : existing.comment,
       lastModifiedAt: now,
     };
   },
@@ -149,7 +182,47 @@ export const FilamentRepository = {
     comment?: string;
   }): Promise<Filament> {
     const now = Date.now();
-    const payload = {
+    const existing = await this.getByRemoteId(data.remoteId);
+
+    if (existing) {
+      // DB payload uses null to clear optional fields in SQLite
+      await getDb()
+        .update(filaments)
+        .set({
+          name: data.name,
+          material: data.material,
+          colorHex: data.colorHex ?? null,
+          manufacturerLocalId: data.manufacturerLocalId ?? null,
+          weight: data.weight ?? null,
+          spoolWeight: data.spoolWeight ?? null,
+          comment: data.comment ?? null,
+          syncState: "synced",
+          lastModifiedAt: now,
+        })
+        .where(eq(filaments.localId, existing.localId));
+
+      // Domain return uses undefined (no null in domain types)
+      return {
+        localId: existing.localId,
+        remoteId: data.remoteId,
+        name: data.name,
+        material: data.material,
+        colorHex: data.colorHex ?? undefined,
+        manufacturerLocalId: data.manufacturerLocalId ?? undefined,
+        weight: data.weight ?? undefined,
+        spoolWeight: data.spoolWeight ?? undefined,
+        printTempMin: existing.printTempMin,
+        printTempMax: existing.printTempMax,
+        density: existing.density,
+        comment: data.comment ?? undefined,
+        lastModifiedAt: now,
+      };
+    }
+
+    const localId = generateLocalId();
+    const insert: InsertFilament = {
+      localId,
+      remoteId: data.remoteId,
       name: data.name,
       material: data.material,
       colorHex: data.colorHex ?? null,
@@ -157,25 +230,8 @@ export const FilamentRepository = {
       weight: data.weight ?? null,
       spoolWeight: data.spoolWeight ?? null,
       comment: data.comment ?? null,
-      syncState: "synced" as const,
+      syncState: "synced",
       lastModifiedAt: now,
-    };
-
-    const existing = await this.getByRemoteId(data.remoteId);
-
-    if (existing) {
-      await getDb()
-        .update(filaments)
-        .set(payload)
-        .where(eq(filaments.localId, existing.localId));
-      return { ...existing, ...payload };
-    }
-
-    const localId = generateLocalId();
-    const insert: InsertFilament = {
-      localId,
-      remoteId: data.remoteId,
-      ...payload,
     };
     await getDb().insert(filaments).values(insert);
     return toFilament(insert as typeof filaments.$inferSelect);

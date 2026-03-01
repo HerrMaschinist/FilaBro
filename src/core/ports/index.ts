@@ -1,19 +1,13 @@
 /**
  * src/core/ports/index.ts
  *
- * Phase 1: Port interfaces (contracts only, no implementation).
- * All types reference existing src/domain/models.ts to avoid duplication
- * in this phase. Later phases will migrate domain types to src/core/domain/.
- *
- * Naming: I-prefix denotes an interface (port contract).
+ * Port interfaces (contracts only, no implementation).
+ * All types come from src/core/domain — no infrastructure imports.
  */
 
-import type {
-  Spool,
-  SpoolView,
-  Filament,
-  Manufacturer,
-} from "@/src/domain/models";
+import type { Spool, SpoolView } from "@/src/core/domain/spool";
+import type { Filament } from "@/src/core/domain/filament";
+import type { Manufacturer } from "@/src/core/domain/manufacturer";
 
 // ─── Infrastructure Utilities ─────────────────────────────────────────────────
 
@@ -60,7 +54,6 @@ export interface ISpoolRepository {
   getByLocalId(localId: string): Promise<Spool | null>;
   getByLocalIdView(localId: string): Promise<SpoolView | null>;
   getByRemoteId(remoteId: number): Promise<Spool | null>;
-  getDirty(): Promise<Spool[]>;
   createLocal(data: CreateSpoolInput): Promise<Spool>;
   upsertFromRemote(data: UpsertSpoolFromRemoteInput): Promise<Spool>;
   updateRemainingWeight(localId: string, grams: number): Promise<Spool | null>;
@@ -130,19 +123,16 @@ export interface IManufacturerRepository {
 
 // ─── Sync Meta Repository ─────────────────────────────────────────────────────
 
-export type SyncEntityType = "spool" | "filament" | "manufacturer";
-
-export interface SyncMetaRecord {
-  entityType: SyncEntityType;
-  lastPullAt?: number;
-  lastPushAt?: number;
-  serverUrl: string;
-}
+export type { SyncEntityType } from "@/src/core/domain/sync";
 
 export interface ISyncMetaRepository {
-  get(entityType: SyncEntityType): Promise<SyncMetaRecord | null>;
+  get(entityType: import("@/src/core/domain/sync").SyncEntityType): Promise<{
+    lastPullAt?: number;
+    lastPushAt?: number;
+    serverUrl: string;
+  } | null>;
   upsert(
-    entityType: SyncEntityType,
+    entityType: import("@/src/core/domain/sync").SyncEntityType,
     field: "lastPullAt" | "lastPushAt",
     serverUrl: string
   ): Promise<void>;

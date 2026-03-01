@@ -1,0 +1,107 @@
+# Replit Prompt: FilaBro Phase 2 umsetzen (Domänenreinheit)
+
+Du arbeitest im bestehenden FilaBro Repo. Phase 1 ist bereits umgesetzt, mit diesen Dateien:
+- /src/core/ports/index.ts
+- /src/core/application/CatalogUseCase.ts
+- /src/core/application/SyncUseCase.ts
+- /src/core/application/SpoolUseCase.ts
+- /contexts/AppContext.tsx nutzt UseCases statt Repos direkt
+
+Jetzt implementierst Du PHASE 2: Domänenreinheit herstellen.
+
+Ziele Phase 2
+1. Domain Modelle sind rein fachlich und liegen unter /src/core/domain.
+2. Sync Technik fliegt aus Domain Entitäten raus.
+3. External References werden separat modelliert.
+4. Keine Logikänderung im Verhalten, nur Modelltrennung und Mapping.
+5. Projekt muss nach Phase 2 bauen, inklusive tsc.
+
+Nicht verhandelbar
+1. Konkrete Dateipfade und kompletter Dateiinhalt oder Diff für jede Änderung.
+2. Keine UI Änderungen außer Typanpassungen die durch Phase 2 nötig sind.
+3. Keine neue Spoolman Kopplung in der Domain.
+4. Nach Phase 2 darf es in /src/core/domain keine Imports aus react-native, expo, drizzle, sqlite, fetch, axios, nfc, camera geben.
+
+Ausgangslage
+- Aktuelle Domain Typen sind in /src/domain/models.ts
+- Diese enthalten Sync Felder wie syncState, dirtyFields, localVersion, remoteVersion
+- In Repos existieren aktuell null vs undefined Typfehler in:
+  - /src/data/repositories/FilamentRepository.ts
+  - /src/data/repositories/SpoolRepository.ts
+
+Aufgaben Phase 2 im Detail
+
+Schritt 2.1: Neue Core Domain Dateien anlegen
+1. Erstelle Ordner: /src/core/domain
+2. Erstelle folgende Dateien mit rein fachlichen Typen:
+   - /src/core/domain/spool.ts
+   - /src/core/domain/filament.ts
+   - /src/core/domain/manufacturer.ts
+3. Erstelle /src/core/domain/index.ts, das die Domain Typen exportiert.
+
+Wichtig
+- Domain Entitäten enthalten keine Sync Felder.
+- Domain Entitäten enthalten keine Infrastruktur Felder.
+- lastModifiedAt darf bleiben, aber nur als fachlich genutztes Änderungsdatum, keine Sync Policy daran koppeln.
+
+Schritt 2.2: Sync Strukturen auslagern
+1. Erstelle Ordner: /src/core/domain/sync
+2. Erstelle:
+   - /src/core/domain/sync/types.ts mit:
+     - SyncState als string union
+     - DirtyFieldSet als string[]
+     - SyncRecord mit localId, entityType, syncState, dirtyFields, localVersion, remoteVersion optional
+   - /src/core/domain/sync/index.ts exportiert diese Typen
+3. dirtyFields ist ab jetzt string[] und nicht JSON string. Das Mapping passiert im Adapter.
+
+Schritt 2.3: External References getrennt modellieren
+1. Erstelle Ordner: /src/core/domain/external
+2. Erstelle:
+   - /src/core/domain/external/types.ts mit:
+     - ExternalSystem = "spoolman"
+     - ExternalRef { localId: string, system: ExternalSystem, remoteId: number }
+     - EntityType = "spool" | "filament" | "manufacturer"
+   - /src/core/domain/external/index.ts exportiert diese Typen
+
+Regel
+- Domain Entitäten haben keine remoteId Pflicht und remoteId ist nicht Teil der Identität.
+- Remote IDs werden im Adapter entweder weiterhin in DB Tabellen gehalten oder über ExternalRef abgebildet, aber Domain bleibt davon unabhängig.
+
+Schritt 2.4: Ports auf neue Domain Typen umstellen
+1. Passe /src/core/ports/index.ts an, so dass es die Typen aus /src/core/domain importiert.
+2. Wenn bisher src/domain/models.ts referenziert wird, ersetze das durch /src/core/domain.
+3. Achte darauf, dass Application UseCases weiterhin bauen.
+
+Schritt 2.5: Bestehende src/domain/models.ts migrieren
+1. Entweder:
+   - Datei /src/domain/models.ts als Legacy belassen, aber alle Imports im neuen Core müssen auf /src/core/domain zeigen
+   oder
+   - /src/domain/models.ts umstellen, so dass es nur Re exports aus /src/core/domain liefert
+Entscheidung treffen und sauber umsetzen, ohne doppelten Typbestand.
+
+Schritt 2.6: Adapter Mapping anpassen und null vs undefined Fehler fixen
+1. In /src/data/repositories/FilamentRepository.ts und /src/data/repositories/SpoolRepository.ts:
+   - Alle Rückgaben die aktuell string | null liefern, in das erwartete string | undefined mappen.
+   - Das passiert in Mapping Schicht, nicht in Domain.
+2. Wenn DB Felder null enthalten, mappe auf undefined in Domain Objekten.
+3. Stelle sicher, dass tsc danach ohne Fehler läuft.
+
+Schritt 2.7: Alle Imports im Projekt aktualisieren
+1. Suche alle Imports von /src/domain/models.ts und migriere sie auf:
+   - /src/core/domain
+   - oder auf /src/core/ports
+2. UI darf weiterhin View Typen nutzen, aber die Quelle ist Core Domain oder explizite View Models aus Application.
+
+Lieferformat
+Für Phase 2 lieferst Du:
+1. Liste aller neu erstellten Dateien mit komplettem Inhalt
+2. Liste aller geänderten Dateien mit Diff oder komplettem Inhalt
+3. Kurzer Hinweis pro Datei, warum die Änderung nötig war
+4. Am Ende die exakten Prüfkommandos und erwartetes Ergebnis
+
+Prüfkommandos am Ende ausführen und Ergebnis berichten
+1. npx tsc --noEmit
+2. Diese Domain Reinheitsprüfung:
+   rg -n "from 'expo|react-native|drizzle|sqlite|fetch|axios|nfc|camera" /home/runner/workspace/src/core/domain || true
+
+Start jetzt mit Schritt 2.1 und liefere die komplette Phase 2 Umsetzung in einem Durchlauf.
