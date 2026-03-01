@@ -4,6 +4,8 @@ import { SpoolRepository } from "@/src/data/repositories/SpoolRepository";
 import { SpoolStatsRepository } from "@/src/data/repositories/SpoolStatsRepository";
 import { isPersistenceEnabled } from "@/src/data/db/client";
 import type { Manufacturer, Filament, Spool } from "@/src/domain/models";
+import { normalizeColor } from "@/src/core/application/filament/ColorNormalizer";
+import type { FilamentSpec } from "@/src/core/domain/filament";
 
 export const MATERIALS = [
   "PLA",
@@ -41,14 +43,41 @@ export const CatalogService = {
   async createFilament(data: {
     name: string;
     material: string;
+    colorInput?: string;
     colorHex?: string;
     manufacturerLocalId?: string;
     weight?: number;
     spoolWeight?: number;
     comment?: string;
+    spec?: Partial<FilamentSpec>;
   }): Promise<Filament> {
     if (!isPersistenceEnabled) throw new Error("PERSISTENCE_DISABLED");
-    return FilamentRepository.createLocal(data);
+    let colorNameRaw: string | undefined;
+    let colorNameNormalized: string | undefined;
+    let colorHexNormalized: string | undefined;
+    if (data.colorInput?.trim()) {
+      const nc = normalizeColor(data.colorInput);
+      colorNameRaw = nc.colorNameRaw;
+      colorNameNormalized = nc.colorNameNormalized;
+      colorHexNormalized = nc.colorHexNormalized;
+    }
+    return FilamentRepository.createLocal({
+      name: data.name,
+      material: data.material,
+      colorNameRaw,
+      colorNameNormalized,
+      colorHexNormalized,
+      colorHex: data.colorHex,
+      manufacturerLocalId: data.manufacturerLocalId,
+      weight: data.weight,
+      spoolWeight: data.spoolWeight,
+      comment: data.comment,
+      diameterMm: data.spec?.diameterMm,
+      printTempCMin: data.spec?.printTempCMin,
+      printTempCMax: data.spec?.printTempCMax,
+      bedTempCMin: data.spec?.bedTempCMin,
+      bedTempCMax: data.spec?.bedTempCMax,
+    });
   },
 
   async createSpool(data: {

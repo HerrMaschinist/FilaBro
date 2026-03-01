@@ -114,11 +114,13 @@ interface CreateManufacturerData {
 interface CreateFilamentData {
   name: string;
   material: string;
+  colorInput?: string;
   colorHex?: string;
   manufacturerLocalId?: string;
   weight?: number;
   spoolWeight?: number;
   comment?: string;
+  spec?: Partial<import("@/src/core/domain/filament").FilamentSpec>;
 }
 
 interface CreateSpoolData {
@@ -673,15 +675,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const createFilament = useCallback(
     async (data: CreateFilamentData): Promise<DomainFilament | null> => {
       if (!isPersistenceEnabled) {
+        let colorNameRaw: string | undefined;
+        let colorNameNormalized: string | undefined;
+        let colorHexNormalized: string | undefined;
+        if (data.colorInput?.trim()) {
+          const nc = normalizeColor(data.colorInput);
+          colorNameRaw = nc.colorNameRaw;
+          colorNameNormalized = nc.colorNameNormalized;
+          colorHexNormalized = nc.colorHexNormalized;
+        }
         const f: DomainFilament = {
           localId: generateLocalId(),
           name: data.name,
           material: data.material,
           colorHex: data.colorHex,
+          colorNameRaw,
+          colorNameNormalized,
+          colorHexNormalized,
           manufacturerLocalId: data.manufacturerLocalId,
           weight: data.weight,
           spoolWeight: data.spoolWeight,
           comment: data.comment,
+          spec: data.spec ? { ...data.spec } : undefined,
           lastModifiedAt: Date.now(),
         };
         setFilaments((prev) => [...prev, f]);

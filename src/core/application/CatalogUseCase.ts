@@ -19,11 +19,14 @@ export interface CreateManufacturerInput {
 export interface CreateFilamentInput {
   name: string;
   material: string;
+  /** Free-text color input (name or hex). CatalogService runs normalizer. */
+  colorInput?: string;
   colorHex?: string;
   manufacturerLocalId?: string;
   weight?: number;
   spoolWeight?: number;
   comment?: string;
+  spec?: Partial<import("@/src/core/domain/filament").FilamentSpec>;
 }
 
 export interface CreateSpoolInput {

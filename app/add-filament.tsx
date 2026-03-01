@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,16 @@ import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { MATERIALS } from "@/src/features/catalog/CatalogService";
+import { normalizeColor } from "@/src/core/application/filament/ColorNormalizer";
+import { FilamentUseCase } from "@/src/core/application/FilamentUseCase";
+
+function safeBack() {
+  if (router.canGoBack()) {
+    router.back();
+  } else {
+    router.replace("/");
+  }
+}
 
 export default function AddFilamentScreen() {
   const { t } = useTranslation();
@@ -28,10 +38,15 @@ export default function AddFilamentScreen() {
   const [name, setName] = useState("");
   const [material, setMaterial] = useState("");
   const [manufacturerLocalId, setManufacturerLocalId] = useState("");
-  const [colorHex, setColorHex] = useState("");
+  const [colorInput, setColorInput] = useState("");
   const [weight, setWeight] = useState("");
   const [spoolWeight, setSpoolWeight] = useState("");
   const [comment, setComment] = useState("");
+  const [diameterMm, setDiameterMm] = useState("");
+  const [printTempCMin, setPrintTempCMin] = useState("");
+  const [printTempCMax, setPrintTempCMax] = useState("");
+  const [bedTempCMin, setBedTempCMin] = useState("");
+  const [bedTempCMax, setBedTempCMax] = useState("");
   const [saving, setSaving] = useState(false);
   const [showMfrPicker, setShowMfrPicker] = useState(false);
 
@@ -39,6 +54,24 @@ export default function AddFilamentScreen() {
     (m) => m.localId === manufacturerLocalId
   );
   const canSave = name.trim().length > 0 && material.length > 0;
+
+  const colorPreviewHex = useMemo(() => {
+    if (!colorInput.trim()) return null;
+    const nc = normalizeColor(colorInput);
+    return nc.colorHexNormalized ?? null;
+  }, [colorInput]);
+
+  const applyMaterialDefaults = (mat: string) => {
+    setMaterial(mat);
+    Haptics.selectionAsync();
+    if (!printTempCMin && !printTempCMax && !bedTempCMin && !bedTempCMax) {
+      const defaults = FilamentUseCase.applyMaterialDefaults(mat, {});
+      if (defaults.printTempCMin) setPrintTempCMin(String(defaults.printTempCMin));
+      if (defaults.printTempCMax) setPrintTempCMax(String(defaults.printTempCMax));
+      if (defaults.bedTempCMin) setBedTempCMin(String(defaults.bedTempCMin));
+      if (defaults.bedTempCMax) setBedTempCMax(String(defaults.bedTempCMax));
+    }
+  };
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -50,35 +83,65 @@ export default function AddFilamentScreen() {
       return;
     }
 
+    const parsedWeight = weight ? parseFloat(weight) : undefined;
+    const parsedSpoolWeight = spoolWeight ? parseFloat(spoolWeight) : undefined;
+    const parsedDiameter = diameterMm ? parseFloat(diameterMm) : undefined;
+    const parsedPrintMin = printTempCMin ? parseInt(printTempCMin, 10) : undefined;
+    const parsedPrintMax = printTempCMax ? parseInt(printTempCMax, 10) : undefined;
+    const parsedBedMin = bedTempCMin ? parseInt(bedTempCMin, 10) : undefined;
+    const parsedBedMax = bedTempCMax ? parseInt(bedTempCMax, 10) : undefined;
+
+    if (weight && (isNaN(parsedWeight!) || parsedWeight! <= 0)) {
+      Alert.alert(t("common.error"), t("validation.weight_invalid"));
+      return;
+    }
+
+    const specPatch: Record<string, number | undefined> = {};
+    if (parsedDiameter !== undefined) specPatch.diameterMm = parsedDiameter;
+    if (parsedPrintMin !== undefined) specPatch.printTempCMin = parsedPrintMin;
+    if (parsedPrintMax !== undefined) specPatch.printTempCMax = parsedPrintMax;
+    if (parsedBedMin !== undefined) specPatch.bedTempCMin = parsedBedMin;
+    if (parsedBedMax !== undefined) specPatch.bedTempCMax = parsedBedMax;
+
+    if (Object.keys(specPatch).length > 0) {
+      const validation = FilamentUseCase.validateSpec(specPatch);
+      if (!validation.valid) {
+        if (
+          validation.errors.includes("PRINT_TEMP_MIN_GT_MAX") ||
+          validation.errors.includes("BED_TEMP_MIN_GT_MAX")
+        ) {
+          Alert.alert(
+            t("common.error"),
+            t("validation.temp_min_gt_max", "Min temp must be less than max temp")
+          );
+          return;
+        }
+        if (validation.errors.includes("PRINT_TEMP_OUT_OF_RANGE")) {
+          Alert.alert(
+            t("common.error"),
+            t("validation.temp_out_of_range", "Temperature must be between 150°C and 350°C")
+          );
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     try {
-      const parsedWeight = weight ? parseFloat(weight) : undefined;
-      const parsedSpoolWeight = spoolWeight
-        ? parseFloat(spoolWeight)
-        : undefined;
-
-      if (weight && (isNaN(parsedWeight!) || parsedWeight! <= 0)) {
-        Alert.alert(t("common.error"), t("validation.weight_invalid"));
-        setSaving(false);
-        return;
-      }
-
-      let hex = colorHex.trim();
-      if (hex && !hex.startsWith("#")) hex = "#" + hex;
-
       const result = await createFilament({
         name: name.trim(),
         material,
-        colorHex: hex || undefined,
+        colorInput: colorInput.trim() || undefined,
         manufacturerLocalId: manufacturerLocalId || undefined,
         weight: parsedWeight,
         spoolWeight: parsedSpoolWeight,
         comment: comment.trim() || undefined,
+        spec: Object.keys(specPatch).length > 0 ? specPatch : undefined,
       });
 
       if (result) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.back();
+        safeBack();
       } else {
         Alert.alert(t("common.error"), t("catalog.persistence_required"));
       }
@@ -90,12 +153,6 @@ export default function AddFilamentScreen() {
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
-  const previewColor =
-    colorHex.trim().length >= 3
-      ? colorHex.startsWith("#")
-        ? colorHex
-        : `#${colorHex}`
-      : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -114,7 +171,7 @@ export default function AddFilamentScreen() {
             {t("catalog.add_filament")}
           </Text>
           <Pressable
-            onPress={() => router.back()}
+            onPress={safeBack}
             hitSlop={12}
             testID="close-filament"
           >
@@ -168,10 +225,7 @@ export default function AddFilamentScreen() {
                     borderColor: colors.accent,
                   },
                 ]}
-                onPress={() => {
-                  setMaterial(m);
-                  Haptics.selectionAsync();
-                }}
+                onPress={() => applyMaterialDefaults(m)}
               >
                 <Text
                   style={[
@@ -234,7 +288,7 @@ export default function AddFilamentScreen() {
           ]}
         >
           <Text style={[styles.label, { color: colors.textSecondary }]}>
-            {t("form.color_hex")}
+            {t("form.color")}
           </Text>
           <View style={styles.colorRow}>
             <TextInput
@@ -246,22 +300,20 @@ export default function AddFilamentScreen() {
                   color: colors.text,
                 },
               ]}
-              value={colorHex}
-              onChangeText={setColorHex}
-              placeholder="#FF0000"
+              value={colorInput}
+              onChangeText={setColorInput}
+              placeholder={t("form.color_placeholder")}
               placeholderTextColor={colors.textTertiary}
-              autoCapitalize="characters"
-              maxLength={7}
               testID="input-filament-color"
             />
-            {previewColor && (
+            {colorPreviewHex ? (
               <View
                 style={[
                   styles.colorPreview,
-                  { backgroundColor: previewColor },
+                  { backgroundColor: colorPreviewHex },
                 ]}
               />
-            )}
+            ) : null}
           </View>
 
           <Text style={[styles.label, { color: colors.textSecondary }]}>
@@ -321,6 +373,117 @@ export default function AddFilamentScreen() {
             multiline
             numberOfLines={3}
           />
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.surfaceBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
+            {t("form.spec_section")}
+          </Text>
+
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {t("form.diameter_mm")}
+          </Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.surfaceElevated,
+                color: colors.text,
+              },
+            ]}
+            value={diameterMm}
+            onChangeText={setDiameterMm}
+            placeholder="1.75"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="decimal-pad"
+            testID="input-filament-diameter"
+          />
+
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {t("form.print_temp_c_min")} / {t("form.print_temp_c_max")}
+          </Text>
+          <View style={styles.rangeRow}>
+            <TextInput
+              style={[
+                styles.input,
+                styles.rangeInput,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  color: colors.text,
+                },
+              ]}
+              value={printTempCMin}
+              onChangeText={setPrintTempCMin}
+              placeholder="190"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numeric"
+              testID="input-filament-print-temp-min"
+            />
+            <Text style={[styles.rangeSep, { color: colors.textTertiary }]}>–</Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.rangeInput,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  color: colors.text,
+                },
+              ]}
+              value={printTempCMax}
+              onChangeText={setPrintTempCMax}
+              placeholder="220"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numeric"
+              testID="input-filament-print-temp-max"
+            />
+          </View>
+
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {t("form.bed_temp_c_min")} / {t("form.bed_temp_c_max")}
+          </Text>
+          <View style={styles.rangeRow}>
+            <TextInput
+              style={[
+                styles.input,
+                styles.rangeInput,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  color: colors.text,
+                },
+              ]}
+              value={bedTempCMin}
+              onChangeText={setBedTempCMin}
+              placeholder="55"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numeric"
+              testID="input-filament-bed-temp-min"
+            />
+            <Text style={[styles.rangeSep, { color: colors.textTertiary }]}>–</Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.rangeInput,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  color: colors.text,
+                },
+              ]}
+              value={bedTempCMax}
+              onChangeText={setBedTempCMax}
+              placeholder="65"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numeric"
+              testID="input-filament-bed-temp-max"
+            />
+          </View>
         </View>
 
         <Pressable
@@ -491,6 +654,13 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 24,
   },
+  sectionHeader: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.8,
+    textTransform: "uppercase" as const,
+    marginBottom: 4,
+  },
   label: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
@@ -546,6 +716,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
+  },
+  rangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  rangeInput: { flex: 1 },
+  rangeSep: {
+    fontSize: 18,
+    fontFamily: "Inter_400Regular",
   },
   saveBtn: {
     borderRadius: 14,

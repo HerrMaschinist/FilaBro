@@ -162,6 +162,11 @@ export const FilamentRepository = {
     weight?: number;
     spoolWeight?: number;
     comment?: string;
+    diameterMm?: number;
+    printTempCMin?: number;
+    printTempCMax?: number;
+    bedTempCMin?: number;
+    bedTempCMax?: number;
   }): Promise<Filament> {
     const now = Date.now();
     const localId = generateLocalId();
@@ -177,6 +182,11 @@ export const FilamentRepository = {
       weight: data.weight ?? null,
       spoolWeight: data.spoolWeight ?? null,
       comment: data.comment ?? null,
+      diameterMm: data.diameterMm ?? null,
+      printTempCMin: data.printTempCMin ?? null,
+      printTempCMax: data.printTempCMax ?? null,
+      bedTempCMin: data.bedTempCMin ?? null,
+      bedTempCMax: data.bedTempCMax ?? null,
       syncState: "dirty",
       lastModifiedAt: now,
     };
