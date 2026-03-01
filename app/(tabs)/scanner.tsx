@@ -9,6 +9,11 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,7 +31,6 @@ import {
 type ScanMode = "qr" | "nfc";
 type NfcScanState = "idle" | "checking" | "scanning" | "success" | "error";
 
-// ─── QR payload extraction ────────────────────────────────────────────────────
 function extractSpoolId(data: string): number | null {
   if (/^\d+$/.test(data.trim())) return parseInt(data.trim(), 10);
   const urlMatch = data.match(/\/spool[s]?\/(\d+)/i);
@@ -36,7 +40,6 @@ function extractSpoolId(data: string): number | null {
   return null;
 }
 
-// ─── Main screen ─────────────────────────────────────────────────────────────
 export default function ScannerScreen() {
   const { t } = useTranslation();
   const { colors } = useAppTheme();
@@ -45,21 +48,28 @@ export default function ScannerScreen() {
 
   const [mode, setMode] = useState<ScanMode>("qr");
 
-  // QR state
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
 
-  // NFC state
   const [nfcAvailability, setNfcAvailability] = useState<NfcAvailability | null>(null);
   const [nfcState, setNfcState] = useState<NfcScanState>("idle");
   const [nfcMessage, setNfcMessage] = useState("");
   const [nfcRaw, setNfcRaw] = useState<string | null>(null);
   const isScanningRef = useRef(false);
 
+  const pillAnim = useSharedValue(0);
+  const [switcherWidth, setSwitcherWidth] = useState(220);
+
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
-  // Check NFC when switching to NFC mode
+  useEffect(() => {
+    pillAnim.value = withSpring(mode === "qr" ? 0 : 1, {
+      damping: 22,
+      stiffness: 260,
+    });
+  }, [mode]);
+
   useEffect(() => {
     if (mode === "nfc" && !nfcAvailability) {
       setNfcState("checking");
@@ -68,7 +78,6 @@ export default function ScannerScreen() {
         setNfcState("idle");
       });
     }
-    // Cancel any ongoing NFC scan when leaving NFC mode
     if (mode !== "nfc" && isScanningRef.current) {
       isScanningRef.current = false;
       stopScan();
@@ -76,7 +85,12 @@ export default function ScannerScreen() {
     }
   }, [mode]);
 
-  // ── QR handler ────────────────────────────────────────────────────────────
+  const pillWidth = (switcherWidth - 6) / 2;
+
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pillAnim.value * pillWidth }],
+  }));
+
   const handleBarcode = useCallback(
     ({ data }: { data: string }) => {
       if (scanned) return;
@@ -126,11 +140,9 @@ export default function ScannerScreen() {
     [scanned, spools, t]
   );
 
-  // ── NFC scan ──────────────────────────────────────────────────────────────
   const handleNfcScan = useCallback(async () => {
     if (!nfcAvailability?.available) return;
     if (isScanningRef.current) {
-      // Cancel active scan
       isScanningRef.current = false;
       await stopScan();
       setNfcState("idle");
@@ -152,7 +164,6 @@ export default function ScannerScreen() {
       setNfcRaw(payload.raw);
 
       if (payload.spoolId) {
-        const numericId = parseInt(payload.spoolId, 10);
         setNfcState("success");
         setNfcMessage(t("scanner.nfc_success"));
         setTimeout(() => {
@@ -175,13 +186,22 @@ export default function ScannerScreen() {
 
   const s = makeStyles(colors);
 
-  // ── Mode switcher ─────────────────────────────────────────────────────────
   const ModeSwitcher = (
-    <View style={[s.modeSwitcher, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
+    <View
+      style={[s.modeSwitcher, { backgroundColor: "rgba(0,0,0,0.55)" }]}
+      onLayout={(e) => setSwitcherWidth(e.nativeEvent.layout.width)}
+    >
+      <Animated.View
+        style={[
+          s.modePill,
+          pillStyle,
+          { width: pillWidth, backgroundColor: colors.accent, pointerEvents: "none" },
+        ]}
+      />
       {(["qr", "nfc"] as ScanMode[]).map((m) => (
         <Pressable
           key={m}
-          style={[s.modeBtn, mode === m && s.modeBtnActive]}
+          style={s.modeBtn}
           onPress={() => {
             setMode(m);
             Haptics.selectionAsync();
@@ -200,7 +220,6 @@ export default function ScannerScreen() {
     </View>
   );
 
-  // ── Camera permission screens ─────────────────────────────────────────────
   if (mode === "qr") {
     if (!permission) {
       return (
@@ -233,7 +252,7 @@ export default function ScannerScreen() {
               </Text>
             ) : (
               <Pressable
-                style={[s.permBtn, { backgroundColor: colors.accent }]}
+                style={({ pressed }) => [s.permBtn, { backgroundColor: colors.accent }, pressed && { opacity: 0.82 }]}
                 onPress={requestPermission}
               >
                 <Text style={s.permBtnText}>{t("scanner.camera_allow")}</Text>
@@ -244,7 +263,6 @@ export default function ScannerScreen() {
       );
     }
 
-    // ── QR camera view ───────────────────────────────────────────────────────
     return (
       <View style={s.container}>
         <CameraView
@@ -268,33 +286,39 @@ export default function ScannerScreen() {
           {ModeSwitcher}
 
           <View style={s.viewfinder}>
-            <Corner pos="tl" />
-            <Corner pos="tr" />
-            <Corner pos="bl" />
-            <Corner pos="br" />
+            <Corner pos="tl" color={colors.accent} />
+            <Corner pos="tr" color={colors.accent} />
+            <Corner pos="bl" color={colors.accent} />
+            <Corner pos="br" color={colors.accent} />
             <Text style={s.viewfinderHint}>{t("scanner.qr_hint")}</Text>
           </View>
 
           {lastResult && scanned && (
-            <View style={s.resultCard}>
-              <Text style={s.resultLabel}>{t("scanner.qr_last_scan")}</Text>
+            <View style={[s.resultCard, { borderColor: `${colors.accent}50` }]}>
+              <Text style={[s.resultLabel, { color: colors.accent }]}>{t("scanner.qr_last_scan")}</Text>
               <Text style={s.resultValue} numberOfLines={2}>{lastResult}</Text>
             </View>
           )}
 
           <Pressable
-            style={({ pressed }) => [s.actionBtn, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [
+              s.actionBtn,
+              {
+                backgroundColor: `${colors.accent}20`,
+                borderColor: colors.accent,
+              },
+              pressed && { opacity: 0.78 },
+            ]}
             onPress={() => { setScanned(false); setLastResult(null); }}
           >
-            <Ionicons name="refresh" size={20} color="#fff" />
-            <Text style={s.actionBtnText}>{t("scanner.qr_scan_again")}</Text>
+            <Ionicons name="refresh" size={20} color={colors.accent} />
+            <Text style={[s.actionBtnText, { color: colors.accent }]}>{t("scanner.qr_scan_again")}</Text>
           </Pressable>
         </View>
       </View>
     );
   }
 
-  // ── NFC mode ──────────────────────────────────────────────────────────────
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
       <View
@@ -311,7 +335,6 @@ export default function ScannerScreen() {
         {ModeSwitcher}
 
         <View style={s.nfcContent}>
-          {/* Checking state */}
           {nfcState === "checking" && (
             <>
               <ActivityIndicator color={colors.accent} size="large" />
@@ -321,7 +344,6 @@ export default function ScannerScreen() {
             </>
           )}
 
-          {/* Expo Go unavailable */}
           {nfcState !== "checking" && nfcAvailability && !nfcAvailability.available && nfcAvailability.reason === "expo_go" && (
             <ScrollView
               showsVerticalScrollIndicator={false}
@@ -339,7 +361,6 @@ export default function ScannerScreen() {
             </ScrollView>
           )}
 
-          {/* No hardware */}
           {nfcState !== "checking" && nfcAvailability && !nfcAvailability.available && nfcAvailability.reason === "no_hardware" && (
             <View style={[s.nfcInfoBox, { backgroundColor: `${colors.textTertiary}12`, borderColor: `${colors.surfaceBorder}` }]}>
               <Ionicons name="radio-outline" size={36} color={colors.textTertiary} />
@@ -349,7 +370,6 @@ export default function ScannerScreen() {
             </View>
           )}
 
-          {/* NFC disabled */}
           {nfcState !== "checking" && nfcAvailability && !nfcAvailability.available && nfcAvailability.reason === "disabled" && (
             <View style={[s.nfcInfoBox, { backgroundColor: `${colors.warning}12`, borderColor: `${colors.warning}30` }]}>
               <Ionicons name="radio-outline" size={36} color={colors.warning} />
@@ -359,10 +379,8 @@ export default function ScannerScreen() {
             </View>
           )}
 
-          {/* NFC available — idle / scanning / success / error */}
           {nfcAvailability?.available && nfcState !== "checking" && (
             <>
-              {/* NFC icon */}
               <View
                 style={[
                   s.nfcIcon,
@@ -409,7 +427,6 @@ export default function ScannerScreen() {
                 )}
               </View>
 
-              {/* Status message */}
               {nfcMessage !== "" && (
                 <Text
                   style={[
@@ -428,7 +445,6 @@ export default function ScannerScreen() {
                 </Text>
               )}
 
-              {/* Raw data */}
               {nfcRaw && nfcState !== "scanning" && (
                 <View style={[s.rawCard, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
                   <Text style={[s.rawLabel, { color: colors.textTertiary }]}>
@@ -440,7 +456,6 @@ export default function ScannerScreen() {
                 </View>
               )}
 
-              {/* Action button */}
               <Pressable
                 style={({ pressed }) => [
                   s.actionBtn,
@@ -485,13 +500,12 @@ export default function ScannerScreen() {
   );
 }
 
-// ─── Corner brackets for QR viewfinder ───────────────────────────────────────
-function Corner({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
+function Corner({ pos, color }: { pos: "tl" | "tr" | "bl" | "br"; color: string }) {
   const style: Record<string, number | string> = {
     position: "absolute",
     width: 24,
     height: 24,
-    borderColor: "#00D4AA",
+    borderColor: color,
     borderWidth: 3,
   };
   if (pos === "tl") { style.top = 0; style.left = 0; style.borderRightWidth = 0; style.borderBottomWidth = 0; style.borderTopLeftRadius = 4; }
@@ -544,13 +558,20 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       fontSize: 16,
       fontFamily: "Inter_600SemiBold",
     },
-    // Mode switcher
     modeSwitcher: {
       flexDirection: "row",
       alignSelf: "center",
       borderRadius: 12,
       padding: 3,
-      gap: 2,
+      position: "relative",
+      overflow: "hidden",
+    },
+    modePill: {
+      position: "absolute",
+      top: 3,
+      bottom: 3,
+      left: 3,
+      borderRadius: 9,
     },
     modeBtn: {
       flexDirection: "row",
@@ -559,9 +580,7 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       paddingHorizontal: 14,
       paddingVertical: 7,
       borderRadius: 9,
-    },
-    modeBtnActive: {
-      backgroundColor: "#00D4AA",
+      zIndex: 1,
     },
     modeBtnText: {
       fontSize: 13,
@@ -571,7 +590,6 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
     modeBtnTextActive: {
       color: "#000",
     },
-    // QR overlay
     overlay: {
       flex: 1,
       alignItems: "center",
@@ -604,12 +622,10 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       width: "100%",
       gap: 4,
       borderWidth: 1,
-      borderColor: "rgba(0,212,170,0.4)",
     },
     resultLabel: {
       fontSize: 11,
       fontFamily: "Inter_600SemiBold",
-      color: "#00D4AA",
       letterSpacing: 0.8,
     },
     resultValue: {
@@ -625,15 +641,11 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       paddingHorizontal: 24,
       paddingVertical: 13,
       borderWidth: 1.5,
-      borderColor: "#00D4AA",
-      backgroundColor: "rgba(0,212,170,0.15)",
     },
     actionBtnText: {
-      color: "#fff",
       fontSize: 15,
       fontFamily: "Inter_600SemiBold",
     },
-    // NFC mode
     nfcContainer: {
       flex: 1,
       paddingHorizontal: 24,
@@ -649,38 +661,37 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       width: 120,
       height: 120,
       borderRadius: 60,
-      borderWidth: 2,
       alignItems: "center",
       justifyContent: "center",
+      borderWidth: 2,
     },
     nfcStatusText: {
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: "Inter_500Medium",
       textAlign: "center",
-      paddingHorizontal: 32,
-      lineHeight: 24,
+      paddingHorizontal: 20,
+      lineHeight: 22,
     },
     nfcInfoCard: {
-      alignItems: "center",
+      padding: 8,
     },
     nfcInfoBox: {
-      borderRadius: 16,
+      borderRadius: 18,
       borderWidth: 1,
       padding: 24,
-      gap: 12,
       alignItems: "center",
-      maxWidth: 340,
+      gap: 14,
     },
     nfcInfoTitle: {
-      fontSize: 17,
-      fontFamily: "Inter_600SemiBold",
+      fontSize: 18,
+      fontFamily: "Inter_700Bold",
       textAlign: "center",
     },
     nfcInfoBody: {
       fontSize: 14,
       fontFamily: "Inter_400Regular",
       textAlign: "center",
-      lineHeight: 22,
+      lineHeight: 21,
     },
     rawCard: {
       borderRadius: 12,
@@ -695,9 +706,9 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       letterSpacing: 0.8,
     },
     rawValue: {
-      fontSize: 13,
+      fontSize: 12,
       fontFamily: "Inter_400Regular",
-      lineHeight: 19,
+      lineHeight: 18,
     },
   });
 }

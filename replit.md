@@ -41,7 +41,7 @@ Preferred communication style: Simple, everyday language.
 - **State Management**: React Context (`AppContext`) is the single UI-facing state boundary. Screens never call repositories or API clients directly. AppContext provides full CRUD for manufacturers, filaments, and spools with in-memory web fallback.
 - **Data Fetching**: TanStack Query (`@tanstack/react-query`) for server-side cache and request management
 - **Fonts**: Inter via `@expo-google-fonts/inter`
-- **Animations**: `react-native-reanimated` for spring-based card interactions
+- **Animations**: `react-native-reanimated` for spring animations — SpoolCard entry stagger (index-based delay), scanner mode pill slide, AddSheet spring+fade, PressableScale tap feedback
 - **Haptics**: `expo-haptics` for tactile feedback
 - **i18n**: `i18next` + `react-i18next` with English and German translations in `locales/`
 
@@ -105,8 +105,10 @@ Three-layer architecture: API → Repository → Domain
 - `components/ui/GlassCard.tsx` — semi-transparent card with blur (native) / CSS backdrop-filter (web)
 - `components/ui/FAB.tsx` — floating action button with accent color, positioned bottom-right
 - `components/ui/GradientBackground.tsx` — dark gradient background wrapper
-- `components/SpoolCard.tsx` — glass-styled spool list card with color bar, progress, badges, favorite
-- Bottom sheet pattern used for "Add" action menu (3 options: spool, filament, manufacturer)
+- `components/SpoolCard.tsx` — glass-styled spool list card with color bar, progress, badges, favorite. Accepts `index` prop for staggered entry animation.
+- `components/ui/PressableScale.tsx` — reusable animated pressable with spring scale+opacity feedback
+- Bottom sheet (AddSheet): Reanimated spring slide-up + backdrop fade, `animationType="none"` on Modal for full animation control
+- Scanner mode switcher: animated pill (Reanimated `useSharedValue`) slides between QR/NFC tabs; uses accent color #3B82F6 throughout (no legacy teal)
 
 ---
 
@@ -158,6 +160,7 @@ The app's core data source. Self-hosted on local network.
 - `i18next` + `react-i18next`
 - Supported languages: English (`locales/en.ts`), German (`locales/de.ts`)
 - Language preference persisted and changeable in Settings
+- **i18n rules**: No em-dashes (—) in visible UI text; use `. ` or `: ` instead. German strings use proper umlauts (ö, ü, ä, Ö, Ü, Ä). Compound noun hyphens (e.g. "Filament-Sammlung") are acceptable; sentence-level dashes are not.
 
 ### Build & Tooling
 

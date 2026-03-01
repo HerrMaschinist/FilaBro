@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withDelay,
+  withTiming,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -28,6 +30,7 @@ interface SpoolCardProps {
   onPress: () => void;
   onToggleFavorite: () => void;
   isPending?: boolean;
+  index?: number;
 }
 
 export function SpoolCard({
@@ -36,6 +39,7 @@ export function SpoolCard({
   onPress,
   onToggleFavorite,
   isPending = false,
+  index = 0,
 }: SpoolCardProps) {
   const { colors, isDark } = useAppTheme();
   const { t } = useTranslation();
@@ -47,11 +51,28 @@ export function SpoolCard({
   const total = spool.initial_weight ?? spool.filament?.weight ?? 1000;
 
   const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  const entryOpacity = useSharedValue(0);
+  const entryY = useSharedValue(12);
+
+  useEffect(() => {
+    const delay = Math.min(index * 38, 260);
+    entryOpacity.value = withDelay(delay, withTiming(1, { duration: 260 }));
+    entryY.value = withDelay(delay, withSpring(0, { damping: 22, stiffness: 200 }));
+  }, []);
+
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const entryStyle = useAnimatedStyle(() => ({
+    opacity: entryOpacity.value,
+    transform: [{ translateY: entryY.value }],
+  }));
 
   const handlePress = () => {
-    scale.value = withSpring(0.97, { damping: 15 }, () => {
-      scale.value = withSpring(1);
+    scale.value = withSpring(0.97, { damping: 18, stiffness: 350 }, () => {
+      scale.value = withSpring(1, { damping: 15, stiffness: 280 });
     });
     onPress();
   };
@@ -72,87 +93,89 @@ export function SpoolCard({
   const glassBorder = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
 
   return (
-    <Animated.View style={animStyle}>
-      <Pressable onPress={handlePress} style={({ pressed }) => [{ opacity: pressed ? 0.95 : 1 }]}>
-        <View
-          style={[
-            s.card,
-            {
-              backgroundColor: glassBg,
-              borderColor: glassBorder,
-            },
-            Platform.OS === "web" && {
-              backdropFilter: "blur(24px)",
-              WebkitBackdropFilter: "blur(24px)",
-            } as any,
-          ]}
-        >
-          <View style={[s.colorBar, { backgroundColor: filamentColor }]} />
-          <View style={s.content}>
-            <View style={s.topRow}>
-              <View style={s.nameWrap}>
-                <Text style={[s.name, { color: colors.text }]} numberOfLines={1}>
-                  {name}
-                </Text>
-                <View style={s.badges}>
-                  <View style={[s.badge, { backgroundColor: `${colors.accent}1A` }]}>
-                    <Text style={[s.badgeText, { color: colors.accent }]}>
-                      {spool.filament?.material ?? "—"}
-                    </Text>
+    <Animated.View style={entryStyle}>
+      <Animated.View style={pressStyle}>
+        <Pressable onPress={handlePress} style={({ pressed }) => [{ opacity: pressed ? 0.95 : 1 }]}>
+          <View
+            style={[
+              s.card,
+              {
+                backgroundColor: glassBg,
+                borderColor: glassBorder,
+              },
+              Platform.OS === "web" && {
+                backdropFilter: "blur(24px)",
+                WebkitBackdropFilter: "blur(24px)",
+              } as any,
+            ]}
+          >
+            <View style={[s.colorBar, { backgroundColor: filamentColor }]} />
+            <View style={s.content}>
+              <View style={s.topRow}>
+                <View style={s.nameWrap}>
+                  <Text style={[s.name, { color: colors.text }]} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <View style={s.badges}>
+                    <View style={[s.badge, { backgroundColor: `${colors.accent}1A` }]}>
+                      <Text style={[s.badgeText, { color: colors.accent }]}>
+                        {spool.filament?.material ?? "?"}
+                      </Text>
+                    </View>
+                    {isPending && (
+                      <View style={[s.badge, { backgroundColor: `${colors.warning}1A` }]}>
+                        <Ionicons name="cloud-upload-outline" size={10} color={colors.warning} />
+                        <Text style={[s.badgeText, { color: colors.warning }]}>{t("spool_card.pending")}</Text>
+                      </View>
+                    )}
+                    {spool.archived && (
+                      <View style={[s.badge, { backgroundColor: `${colors.textTertiary}1A` }]}>
+                        <Text style={[s.badgeText, { color: colors.textTertiary }]}>{t("spool_card.archived")}</Text>
+                      </View>
+                    )}
                   </View>
-                  {isPending && (
-                    <View style={[s.badge, { backgroundColor: `${colors.warning}1A` }]}>
-                      <Ionicons name="cloud-upload-outline" size={10} color={colors.warning} />
-                      <Text style={[s.badgeText, { color: colors.warning }]}>{t("spool_card.pending")}</Text>
-                    </View>
-                  )}
-                  {spool.archived && (
-                    <View style={[s.badge, { backgroundColor: `${colors.textTertiary}1A` }]}>
-                      <Text style={[s.badgeText, { color: colors.textTertiary }]}>{t("spool_card.archived")}</Text>
-                    </View>
-                  )}
                 </View>
-              </View>
-              <Pressable onPress={handleFav} hitSlop={12} style={s.favBtn}>
-                <Ionicons
-                  name={isFavorite ? "heart" : "heart-outline"}
-                  size={20}
-                  color={isFavorite ? colors.error : colors.textTertiary}
-                />
-              </Pressable>
-            </View>
-
-            {spool.filament?.vendor?.name && (
-              <Text style={[s.vendor, { color: colors.textSecondary }]} numberOfLines={1}>
-                {spool.filament.vendor.name}
-              </Text>
-            )}
-
-            <View style={s.weightRow}>
-              <View style={s.progressWrap}>
-                <View style={[s.progressTrack, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }]}>
-                  <View
-                    style={[
-                      s.progressFill,
-                      {
-                        width: `${percent}%` as `${number}%`,
-                        backgroundColor: percentColor,
-                      },
-                    ]}
+                <Pressable onPress={handleFav} hitSlop={12} style={s.favBtn}>
+                  <Ionicons
+                    name={isFavorite ? "heart" : "heart-outline"}
+                    size={20}
+                    color={isFavorite ? colors.error : colors.textTertiary}
                   />
-                </View>
+                </Pressable>
               </View>
-              <Text style={[s.weightText, { color: percentColor }]}>
-                {Math.round(remaining)}
-                <Text style={[s.weightUnit, { color: colors.textSecondary }]}>g</Text>
-                <Text style={[s.weightTotal, { color: colors.textTertiary }]}>
-                  {" "}/ {Math.round(total)}g
+
+              {spool.filament?.vendor?.name && (
+                <Text style={[s.vendor, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {spool.filament.vendor.name}
                 </Text>
-              </Text>
+              )}
+
+              <View style={s.weightRow}>
+                <View style={s.progressWrap}>
+                  <View style={[s.progressTrack, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }]}>
+                    <View
+                      style={[
+                        s.progressFill,
+                        {
+                          width: `${percent}%` as `${number}%`,
+                          backgroundColor: percentColor,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+                <Text style={[s.weightText, { color: percentColor }]}>
+                  {Math.round(remaining)}
+                  <Text style={[s.weightUnit, { color: colors.textSecondary }]}>g</Text>
+                  <Text style={[s.weightTotal, { color: colors.textTertiary }]}>
+                    {" "}/ {Math.round(total)}g
+                  </Text>
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

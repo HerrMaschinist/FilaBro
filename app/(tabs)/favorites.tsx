@@ -55,9 +55,10 @@ export default function FavoritesScreen() {
         <FlatList
           data={favoriteSpools}
           keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <SpoolCard
               spool={item}
+              index={index}
               isFavorite={isFavorite(item.id)}
               onPress={() =>
                 router.push({ pathname: "/spool/[id]", params: { id: String(item.id) } })

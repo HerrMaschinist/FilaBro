@@ -12,6 +12,12 @@ import {
   Modal,
   Alert,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -132,9 +138,10 @@ export default function SpoolsScreen() {
   const topInset = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   const renderItem = useCallback(
-    ({ item }: { item: Spool }) => (
+    ({ item, index }: { item: Spool; index: number }) => (
       <SpoolCard
         spool={item}
+        index={index}
         isFavorite={isFavorite(item.id)}
         onPress={() =>
           router.push({
@@ -435,6 +442,27 @@ function AddSheet({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
+  const translateY = useSharedValue(340);
+  const backdropOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      translateY.value = withSpring(0, { damping: 26, stiffness: 280 });
+      backdropOpacity.value = withTiming(1, { duration: 200 });
+    } else {
+      translateY.value = withSpring(340, { damping: 28, stiffness: 300 });
+      backdropOpacity.value = withTiming(0, { duration: 180 });
+    }
+  }, [visible]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
+
   const options = [
     {
       key: "spool",
@@ -459,14 +487,19 @@ function AddSheet({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <Pressable style={addStyles.overlay} onPress={onClose}>
-        <View
+      <View style={addStyles.modalRoot}>
+        <Animated.View style={[addStyles.backdrop, backdropStyle]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </Animated.View>
+        <Animated.View
           style={[
             addStyles.sheet,
+            sheetStyle,
             {
               backgroundColor: colors.surface,
               paddingBottom: insets.bottom + 16,
@@ -486,9 +519,10 @@ function AddSheet({
           {options.map((opt) => (
             <Pressable
               key={opt.key}
-              style={[
+              style={({ pressed }) => [
                 addStyles.option,
                 { backgroundColor: colors.surfaceElevated },
+                pressed && { opacity: 0.82 },
               ]}
               onPress={() => {
                 onClose();
@@ -515,17 +549,20 @@ function AddSheet({
               />
             </Pressable>
           ))}
-        </View>
-      </Pressable>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 const addStyles = StyleSheet.create({
-  overlay: {
+  modalRoot: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   sheet: {
     borderTopLeftRadius: 24,

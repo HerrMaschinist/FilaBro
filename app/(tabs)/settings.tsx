@@ -386,7 +386,7 @@ export default function SettingsScreen() {
             {t("settings.debug_version")}
           </Text>
           <Text style={[s.debugValue, { color: colors.textTertiary }]}>
-            {Constants.expoConfig?.version ?? "—"}
+            {Constants.expoConfig?.version ?? ""}
           </Text>
         </View>
       </View>
