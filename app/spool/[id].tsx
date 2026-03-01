@@ -286,8 +286,15 @@ export default function SpoolDetailScreen() {
             {spool.filament.vendor?.name && (
               <InfoRow label={t("detail.manufacturer")} value={spool.filament.vendor.name} colors={colors} isDark={isDark} />
             )}
-            {spool.filament.color_hex && (
-              <InfoRow label={t("detail.color")} value={`#${spool.filament.color_hex}`} colors={colors} isDark={isDark} colorSwatch={spool.filament.color_hex} />
+            {(spool.filament.color_name || spool.filament.color_hex) && (
+              <InfoRow
+                label={t("detail.color")}
+                value={spool.filament.color_name ?? `#${spool.filament.color_hex}`}
+                subValue={spool.filament.color_name && spool.filament.color_hex ? `#${spool.filament.color_hex}` : undefined}
+                colors={colors}
+                isDark={isDark}
+                colorSwatch={spool.filament.color_hex}
+              />
             )}
             {spool.filament.weight !== undefined && (
               <InfoRow label={t("detail.full_weight")} value={`${spool.filament.weight}g`} colors={colors} isDark={isDark} />
@@ -331,12 +338,14 @@ export default function SpoolDetailScreen() {
 function InfoRow({
   label,
   value,
+  subValue,
   colors,
   isDark,
   colorSwatch,
 }: {
   label: string;
   value: string;
+  subValue?: string;
   colors: typeof Colors.dark;
   isDark: boolean;
   colorSwatch?: string;
@@ -348,7 +357,12 @@ function InfoRow({
         {colorSwatch && (
           <View style={[ir.swatch, { backgroundColor: `#${colorSwatch}` }]} />
         )}
-        <Text style={[ir.value, { color: colors.text }]}>{value}</Text>
+        <View style={ir.valueStack}>
+          <Text style={[ir.value, { color: colors.text }]}>{value}</Text>
+          {subValue && (
+            <Text style={[ir.subValue, { color: colors.textTertiary }]}>{subValue}</Text>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -379,11 +393,20 @@ const ir = StyleSheet.create({
     height: 14,
     borderRadius: 7,
   },
+  valueStack: {
+    alignItems: "flex-end",
+    flexShrink: 1,
+  },
   value: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
     textAlign: "right",
-    flexShrink: 1,
+  },
+  subValue: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    textAlign: "right",
+    marginTop: 1,
   },
 });
 

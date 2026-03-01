@@ -1,0 +1,117 @@
+# Prompt Anpassung für den nächsten Schritt: Filament-Farbe als Name + Hex
+
+Kontext
+Phase 5.1B ist umgesetzt.
+Aktuell wird die Filament-Farbe im Edit Filament Screen nur als HEX Code geführt.
+Das muss geändert werden.
+
+Ziel
+1. Farbe wird primär als **Farbnamen** geführt und ausgewählt.
+2. Zusätzlich wird der **Hexwert** gespeichert und angezeigt.
+3. Nicht nur Hex. Der Benutzer soll einen Farbnamen auswählen oder eingeben können.
+4. In bestehenden Listen und Detail Views soll der Name angezeigt werden, Hex optional klein dazu.
+
+Nicht verhandelbar
+1. Keine neue Architektur.
+2. Inkrementell, buildbar.
+3. Migration ohne Datenverlust.
+4. Domain bleibt rein.
+5. TypeScript am Ende 0 Fehler.
+
+---
+
+## Schritt 1: Datenmodell erweitern (Domain + DB)
+
+### Domain
+Erweitere Filament um zwei Felder:
+- colorName?: string
+- colorHex?: string   // bleibt optional, aber nicht alleiniger Träger der Farbe
+
+Wichtig:
+- Wenn nur legacy colorHex existiert, bleibt es gültig.
+- colorName kann leer sein.
+
+### DB Migration v7
+Erweitere Tabelle `filaments` um:
+- color_name TEXT NULL
+
+Regel:
+- Bestehende color_hex bleibt unverändert.
+- Kein Drop, nur ALTER TABLE.
+- Optionales Seed:
+  Wenn color_name NULL ist und color_hex gesetzt ist, setze color_name NICHT automatisch.
+  Keine automatische Interpretation, keine Mapping Magie.
+
+Dateien:
+- /src/core/domain/filament.ts
+- /src/data/db/schema.ts
+- /src/data/db/client.ts
+
+---
+
+## Schritt 2: Ports + Repository Patch erweitern
+
+### Patch Typ
+Update UpdateFilamentPatch um:
+- colorName?: string
+- colorHex?: string
+
+Repository:
+- FilamentRepository.toFilament() mappt:
+  - db.colorName (null -> undefined)
+  - db.colorHex (null -> undefined)
+- updateLocal() muss color_name und color_hex schreiben können
+- dirtyFields korrekt tracken
+
+Dateien:
+- /src/core/ports/index.ts
+- /src/data/repositories/FilamentRepository.ts
+
+---
+
+## Schritt 3: UI Edit Filament Screen ändern
+
+### UI Verhalten
+- Statt einem reinen Hex Input:
+  1. Farbnamen Auswahl (Picker oder Liste)
+  2. Zusätzliches Hex Feld optional
+
+Minimal UI Lösung ohne Design:
+- Ein Dropdown oder Picker mit gängigen Farbnamen:
+  - Schwarz, Weiß, Grau, Rot, Grün, Blau, Gelb, Orange, Lila, Pink, Braun, Transparent
+- Zusätzlich ein TextInput:
+  - colorName Freitext (überschreibt Auswahl)
+- Zusätzlich ein Hex Input Feld:
+  - optional, validiere auf Pattern ^#?[0-9A-Fa-f]{6}$, speichere normalisiert als #RRGGBB
+
+Speichern:
+- FilamentUseCase.updateFilament(localId, { colorName, colorHex, ... })
+- Keine direkte Repo Nutzung
+
+Anzeige:
+- In Filament Card und Filament Detail:
+  - zeige colorName wenn vorhanden
+  - sonst fallback: colorHex
+  - Hex optional klein anzeigen, wenn name vorhanden
+
+Dateien:
+- Der konkrete Pfad des Filament Edit Screens (z.B. /app/filament/edit.tsx oder /app/filament/[localId]/edit.tsx)
+- Spool Detail Screen Filament Card Datei
+
+---
+
+## Schritt 4: Spoolman Adapter Mapping
+Falls Spoolman ein Color Feld hat:
+- Spoolman DTO bleibt Adapter.
+- Mapping darf colorName und colorHex befüllen, aber nur wenn Daten vorhanden.
+- Keine Annahmen.
+
+Dateien:
+- /src/adapters/spoolman/* oder bestehender Client Mapper
+
+---
+
+## Verifikation
+1) TypeScript
+```bash
+npx tsc --noEmit

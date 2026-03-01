@@ -91,6 +91,7 @@ export interface ISpoolRepository {
 export interface UpdateFilamentPatch {
   name?: string;
   material?: string;
+  colorName?: string;
   colorHex?: string;
   manufacturerLocalId?: string;
   weight?: number;

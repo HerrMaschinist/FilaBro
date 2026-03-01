@@ -145,6 +145,7 @@ const JOIN_SELECT = {
   f_remoteId: filaments.remoteId,
   f_name: filaments.name,
   f_material: filaments.material,
+  f_colorName: filaments.colorName,
   f_colorHex: filaments.colorHex,
   f_manufacturerLocalId: filaments.manufacturerLocalId,
   f_weight: filaments.weight,
@@ -188,6 +189,7 @@ type JoinRow = {
   f_remoteId: number | null;
   f_name: string | null;
   f_material: string | null;
+  f_colorName: string | null;
   f_colorHex: string | null;
   f_manufacturerLocalId: string | null;
   f_weight: number | null;
@@ -237,6 +239,7 @@ function rowToSpoolView(row: JoinRow): SpoolView {
       remoteId: row.f_remoteId ?? undefined,
       name: row.f_name!,
       material: row.f_material!,
+      colorName: row.f_colorName ?? undefined,
       colorHex: row.f_colorHex ?? undefined,
       manufacturerLocalId: row.f_manufacturerLocalId ?? undefined,
       weight: row.f_weight ?? undefined,

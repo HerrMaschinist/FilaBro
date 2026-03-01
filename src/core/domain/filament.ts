@@ -10,6 +10,7 @@ export interface Filament {
   remoteId?: number;
   name: string;
   material: string;
+  colorName?: string;
   colorHex?: string;
   manufacturerLocalId?: string;
   weight?: number;

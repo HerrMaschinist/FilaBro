@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import * as schema from "./schema";
 
 const DB_NAME = "filabro.db";
-const CURRENT_SCHEMA_VERSION = 6;
+const CURRENT_SCHEMA_VERSION = 7;
 
 /**
  * Versioned SQL migrations.
@@ -158,6 +158,13 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
       // Phase 5.1A: purchase metadata fields on filaments (local-only, not synced to Spoolman)
       `ALTER TABLE filaments ADD COLUMN paid_price REAL`,
       `ALTER TABLE filaments ADD COLUMN shop TEXT`,
+    ],
+  },
+  {
+    version: 7,
+    statements: [
+      // Phase 5.2: human-readable color name field on filaments (local-only, not synced to Spoolman)
+      `ALTER TABLE filaments ADD COLUMN color_name TEXT`,
     ],
   },
 ];

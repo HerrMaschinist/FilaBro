@@ -9,6 +9,8 @@ export interface Filament {
   id: number;
   name: string;
   material: string;
+  /** Local-only: human-readable color name. Not from Spoolman API. */
+  color_name?: string;
   color_hex?: string;
   vendor?: Vendor;
   weight?: number;

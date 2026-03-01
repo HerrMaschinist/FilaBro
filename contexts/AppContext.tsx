@@ -56,6 +56,7 @@ function toViewSpool(sv: SpoolView): Spool {
         id: sv.filament.remoteId ?? 0,
         name: sv.filament.name,
         material: sv.filament.material,
+        color_name: sv.filament.colorName,
         color_hex: sv.filament.colorHex,
         vendor: sv.filament.manufacturer
           ? {
@@ -709,6 +710,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             id: 0,
             name: fil?.name ?? "Unknown",
             material: fil?.material ?? "Unknown",
+            color_name: fil?.colorName,
             color_hex: fil?.colorHex,
             vendor: mfr ? { id: 0, name: mfr.name } : undefined,
             weight: fil?.weight,

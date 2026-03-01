@@ -25,6 +25,7 @@ export const filaments = sqliteTable("filaments", {
   remoteId: integer("remote_id"),
   name: text("name").notNull(),
   material: text("material").notNull(),
+  colorName: text("color_name"),
   colorHex: text("color_hex"),
   manufacturerLocalId: text("manufacturer_local_id"),
   weight: real("weight"),

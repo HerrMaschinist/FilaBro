@@ -28,6 +28,7 @@ function toFilamentRecord(row: typeof filaments.$inferSelect): FilamentRecord {
     remoteId: row.remoteId ?? undefined,
     name: row.name,
     material: row.material,
+    colorName: row.colorName ?? undefined,
     colorHex: row.colorHex ?? undefined,
     manufacturerLocalId: row.manufacturerLocalId ?? undefined,
     weight: row.weight ?? undefined,
@@ -50,6 +51,7 @@ function toFilament(row: typeof filaments.$inferSelect): Filament {
     remoteId: row.remoteId ?? undefined,
     name: row.name,
     material: row.material,
+    colorName: row.colorName ?? undefined,
     colorHex: row.colorHex ?? undefined,
     manufacturerLocalId: row.manufacturerLocalId ?? undefined,
     weight: row.weight ?? undefined,
@@ -131,6 +133,7 @@ export const FilamentRepository = {
   async createLocal(data: {
     name: string;
     material: string;
+    colorName?: string;
     colorHex?: string;
     manufacturerLocalId?: string;
     weight?: number;
@@ -143,6 +146,7 @@ export const FilamentRepository = {
       localId,
       name: data.name,
       material: data.material,
+      colorName: data.colorName ?? null,
       colorHex: data.colorHex ?? null,
       manufacturerLocalId: data.manufacturerLocalId ?? null,
       weight: data.weight ?? null,
@@ -160,6 +164,7 @@ export const FilamentRepository = {
     data: {
       name?: string;
       material?: string;
+      colorName?: string;
       colorHex?: string;
       manufacturerLocalId?: string;
       weight?: number;
@@ -183,7 +188,8 @@ export const FilamentRepository = {
     if (existing.syncState === "synced") payload.syncState = "dirty";
     if (data.name !== undefined) payload.name = data.name;
     if (data.material !== undefined) payload.material = data.material;
-    if (data.colorHex !== undefined) payload.colorHex = data.colorHex;
+    if (data.colorName !== undefined) payload.colorName = data.colorName || null;
+    if (data.colorHex !== undefined) payload.colorHex = data.colorHex || null;
     if (data.manufacturerLocalId !== undefined)
       payload.manufacturerLocalId = data.manufacturerLocalId;
     if (data.weight !== undefined) payload.weight = data.weight;
@@ -202,6 +208,10 @@ export const FilamentRepository = {
       remoteId: existing.remoteId,
       name: data.name !== undefined ? data.name : existing.name,
       material: data.material !== undefined ? data.material : existing.material,
+      colorName:
+        data.colorName !== undefined
+          ? data.colorName || undefined
+          : existing.colorName,
       colorHex:
         data.colorHex !== undefined
           ? data.colorHex || undefined

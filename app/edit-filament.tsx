@@ -19,6 +19,11 @@ import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { MATERIALS } from "@/src/features/catalog/CatalogService";
 
+const PRESET_COLORS: string[] = [
+  "Black", "White", "Gray", "Red", "Green", "Blue",
+  "Yellow", "Orange", "Purple", "Pink", "Brown", "Natural", "Transparent",
+];
+
 export default function EditFilamentScreen() {
   const { t } = useTranslation();
   const { colors } = useAppTheme();
@@ -39,6 +44,7 @@ export default function EditFilamentScreen() {
   const [manufacturerLocalId, setManufacturerLocalId] = useState(
     fil?.manufacturerLocalId ?? ""
   );
+  const [colorName, setColorName] = useState(fil?.colorName ?? "");
   const [colorHex, setColorHex] = useState(fil?.colorHex ?? "");
   const [weight, setWeight] = useState(fil?.weight !== undefined ? String(fil.weight) : "");
   const [spoolWeight, setSpoolWeight] = useState(
@@ -92,6 +98,7 @@ export default function EditFilamentScreen() {
       const result = await updateFilament(localId, {
         name: name.trim(),
         material,
+        colorName: colorName.trim() || undefined,
         colorHex: hex || undefined,
         manufacturerLocalId: manufacturerLocalId || undefined,
         weight: parsedWeight,
@@ -268,6 +275,60 @@ export default function EditFilamentScreen() {
             },
           ]}
         >
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {t("form.color_name")}
+          </Text>
+          <View style={styles.chipRow}>
+            {PRESET_COLORS.map((c) => (
+              <Pressable
+                key={c}
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: colors.surfaceBorder,
+                    backgroundColor: colors.surfaceElevated,
+                  },
+                  colorName === c && {
+                    backgroundColor: `${colors.accent}20`,
+                    borderColor: colors.accent,
+                  },
+                ]}
+                onPress={() => {
+                  setColorName(colorName === c ? "" : c);
+                  Haptics.selectionAsync();
+                }}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    {
+                      color:
+                        colorName === c ? colors.accent : colors.textSecondary,
+                    },
+                  ]}
+                >
+                  {c}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.surfaceElevated,
+                color: colors.text,
+                marginTop: 4,
+              },
+            ]}
+            value={colorName}
+            onChangeText={setColorName}
+            placeholder={`${t("form.color_name")} (${t("form.optional")})`}
+            placeholderTextColor={colors.textTertiary}
+            testID="input-filament-color-name"
+          />
+
           <Text style={[styles.label, { color: colors.textSecondary }]}>
             {t("form.color_hex")}
           </Text>
