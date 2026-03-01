@@ -1,0 +1,155 @@
+# Replit Prompt: FilaBro Phase 5 umsetzen (Skalierung 1000+ Spulen, Query-Performance, Indizes, Paging, Scan O(log n))
+
+Du arbeitest im bestehenden FilaBro Repo. Phase 1 bis Phase 4 sind umgesetzt und bauen clean.
+Phase 4 Ergebnis:
+- usage_events append-only
+- spool_stats Projektion
+- remainingWeight kommt aus spool_stats bevorzugt
+- Sync akzeptiert remote nur bei clean entities und schreibt adjustment events bei accept_remote
+
+Jetzt implementierst Du Phase 5: Skalierung und Performance für 1000+ Spulen.
+
+## Ziele Phase 5
+1. Keine N+1 Queries für Spool Views.
+2. Scan Lookups sind O(log n) durch Indizes + direkte Query Methods.
+3. Paging statt alles in Memory zu laden.
+4. Sync Pull und Upserts sind batchfähig, keine 1000 Einzelroundtrips.
+5. Nach Phase 5 baut das Projekt inkl. tsc und Web bundle.
+
+## Nicht verhandelbar
+1. Konkrete Dateipfade, kompletter Dateiinhalt oder Diff pro Änderung.
+2. Keine UI Redesigns. Nur minimale Anpassungen, um Paging zu nutzen.
+3. Domain bleibt rein, keine infra imports in /src/core/domain.
+4. Jede neue Index Änderung ist additive Migration, kein Datenverlust.
+
+## Ausgangslage
+- SpoolRepository.getAllView() und ggf. getByLocalIdView() haben historisch N+1 oder mehrere Roundtrips.
+- Scan nutzt möglicherweise getAll()+Filter oder unindizierte Suche.
+- Schema hat einige Indizes, aber wir müssen prüfen und vervollständigen.
+
+## Phase 5 Aufgaben
+
+### Schritt 5.1: Schema Indizes prüfen und ergänzen
+Prüfe /src/data/db/schema.ts und ergänze falls fehlend:
+
+Spools:
+- spools.remote_id
+- spools.archived
+- spools.sync_state
+- spools.filament_local_id
+- spools.qr_code
+- spools.nfc_tag_id
+- spools.last_modified_at
+
+Filaments:
+- filaments.remote_id
+- filaments.manufacturer_local_id
+- filaments.archived optional falls vorhanden
+
+Manufacturers:
+- manufacturers.remote_id
+
+Spool_stats:
+- spool_stats.updated_at
+- optional: spool_stats.remaining_weight wenn filterbar
+
+Usage_events:
+- (spool_local_id, occurred_at)
+
+Füge Indizes nur hinzu, wenn nicht schon vorhanden.
+Erhöhe Schema Version auf v5 in /src/data/db/client.ts und implementiere Migration:
+- CREATE INDEX IF NOT EXISTS für alle Indizes.
+
+### Schritt 5.2: SpoolRepository View Queries ohne N+1
+Update /src/data/repositories/SpoolRepository.ts:
+
+Ersetze getAllView() und getByLocalIdView() so, dass sie:
+- In exakt einer DB Query alle benötigten Daten holen, bevorzugt via LEFT JOIN:
+  spools
+  left join filaments
+  left join manufacturers
+  left join spool_stats
+- Rückgabe ist SpoolView mit:
+  filamentName, manufacturerName etc.
+  remainingWeight aus spool_stats falls vorhanden, sonst fallback legacy spools.remaining_weight.
+
+Wenn Drizzle Relations im Projekt sinnvoll vorhanden sind, nutze db.select + leftJoin.
+Wenn nicht, baue explicit joins.
+
+Wichtig:
+- Keine Schleifen mit await pro Spule.
+- Keine per Spule getByLocalId für filament/manufacturer.
+
+### Schritt 5.3: Paging API im Repository + UseCase
+1. Update Port:
+   /src/core/ports/index.ts
+   - ISpoolRepository bekommt:
+     - getPagedView(offset: number, limit: number, includeArchived?: boolean): Promise<SpoolView[]>
+     - countSpools(includeArchived?: boolean): Promise<number>
+2. Implementiere diese Methoden in SpoolRepository mit:
+   - ORDER BY lastModifiedAt DESC (oder lastUsed falls vorhanden)
+   - LIMIT und OFFSET
+
+3. Update Application:
+   - /src/core/application/SpoolUseCase.ts oder ein neues /src/core/application/SpoolListUseCase.ts
+   - Methoden:
+     - listSpoolsPage(page: number, pageSize: number)
+     - getTotalSpoolCount()
+
+### Schritt 5.4: Scan Lookup Methoden
+1. Port erweitern:
+   - ISpoolRepository:
+     - findByQrCode(qr: string): Promise<SpoolView | null>
+     - findByNfcTagId(tagId: string): Promise<SpoolView | null>
+
+2. Implementiere in SpoolRepository über indexed WHERE.
+3. Stelle sicher, dass QR und NFC Felder in DB als TEXT indexiert sind.
+4. Passe Scan Flow so an, dass er diese Methoden nutzt statt Listen-Filter.
+   Minimal nur die Stellen ändern, wo aktuell getAll() + filter oder getAllView() gesucht wird.
+
+### Schritt 5.5: Sync Pull Batch Upserts
+Update /src/core/application/SyncUseCase.ts und Adapter Repos:
+
+Ziel:
+- Pull remote lists (manufacturers, filaments, spools) werden in Batches upserted.
+- Keine 1000 Einzel INSERT/UPDATE Statements.
+
+Ansatz:
+1. ManufacturerRepository:
+   - upsertManyFromRemote(remoteList) in einer Transaktion
+2. FilamentRepository:
+   - upsertManyFromRemote(remoteList)
+3. SpoolRepository:
+   - insertManyFromRemote(remoteList) für neue local records
+   - applyManyRemoteUpdates(remoteList) nur für synced records
+   - Konfliktpfad bleibt per entity decision, aber Persistenz kann gesammelt werden.
+
+Wichtig:
+- Konfliktentscheidungen bleiben im UseCase.
+- Persistenzoperationen dürfen batch sein.
+- Bei Drizzle: insert(values).onConflictDoUpdate oder sqlite "insert or replace" je nach Schema.
+
+### Schritt 5.6: Memory Verhalten
+Prüfe AppContext und Spool List State:
+- Wenn aktuell alle Spulen komplett geladen werden, stelle auf Paging um:
+  - initial load page 0
+  - onEndReached lädt nächste Seite
+  - state appendet
+
+Nur minimale UI Anpassung, keine neue UI.
+
+## Lieferformat
+1. Liste aller neu erstellten Dateien mit komplettem Inhalt.
+2. Liste aller geänderten Dateien mit Diff oder kompletter Datei.
+3. Kurzer Hinweis pro Datei, warum geändert.
+4. Am Ende Prüfkommandos und erwartetes Ergebnis.
+
+## Prüfkommandos am Ende ausführen und Ergebnis berichten
+1. npx tsc --noEmit
+2. rg -n "for \\(const spool of|await .*getByLocalId\\(" /home/runner/workspace/src/data/repositories/SpoolRepository.ts
+   Erwartung: keine N+1 Pattern in View Methods.
+3. rg -n "getAllView\\(" /home/runner/workspace/src/contexts /home/runner/workspace/src/app /home/runner/workspace/app || true
+   Erwartung: UI nutzt getPagedView oder UseCase Paging statt full load.
+4. Web bundle check falls möglich.
+
+Starte jetzt mit Schritt 5.1 und liefere die komplette Phase 5 Umsetzung in einem Durchlauf.
