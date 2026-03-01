@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -18,11 +18,7 @@ import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { MATERIALS } from "@/src/features/catalog/CatalogService";
-
-const PRESET_COLORS: string[] = [
-  "Black", "White", "Gray", "Red", "Green", "Blue",
-  "Yellow", "Orange", "Purple", "Pink", "Brown", "Natural", "Transparent",
-];
+import { normalizeColor } from "@/src/core/application/filament/ColorNormalizer";
 
 export default function EditFilamentScreen() {
   const { t } = useTranslation();
@@ -44,9 +40,12 @@ export default function EditFilamentScreen() {
   const [manufacturerLocalId, setManufacturerLocalId] = useState(
     fil?.manufacturerLocalId ?? ""
   );
-  const [colorName, setColorName] = useState(fil?.colorName ?? "");
-  const [colorHex, setColorHex] = useState(fil?.colorHex ?? "");
-  const [weight, setWeight] = useState(fil?.weight !== undefined ? String(fil.weight) : "");
+  const [colorInput, setColorInput] = useState(
+    fil?.colorNameRaw ?? ""
+  );
+  const [weight, setWeight] = useState(
+    fil?.weight !== undefined ? String(fil.weight) : ""
+  );
   const [spoolWeight, setSpoolWeight] = useState(
     fil?.spoolWeight !== undefined ? String(fil.spoolWeight) : ""
   );
@@ -55,6 +54,23 @@ export default function EditFilamentScreen() {
   );
   const [shop, setShop] = useState(fil?.shop ?? "");
   const [comment, setComment] = useState(fil?.comment ?? "");
+
+  const [diameterMm, setDiameterMm] = useState(
+    fil?.spec?.diameterMm !== undefined ? String(fil.spec.diameterMm) : ""
+  );
+  const [printTempCMin, setPrintTempCMin] = useState(
+    fil?.spec?.printTempCMin !== undefined ? String(fil.spec.printTempCMin) : ""
+  );
+  const [printTempCMax, setPrintTempCMax] = useState(
+    fil?.spec?.printTempCMax !== undefined ? String(fil.spec.printTempCMax) : ""
+  );
+  const [bedTempCMin, setBedTempCMin] = useState(
+    fil?.spec?.bedTempCMin !== undefined ? String(fil.spec.bedTempCMin) : ""
+  );
+  const [bedTempCMax, setBedTempCMax] = useState(
+    fil?.spec?.bedTempCMax !== undefined ? String(fil.spec.bedTempCMax) : ""
+  );
+
   const [saving, setSaving] = useState(false);
   const [showMfrPicker, setShowMfrPicker] = useState(false);
 
@@ -63,12 +79,11 @@ export default function EditFilamentScreen() {
   );
   const canSave = name.trim().length > 0 && material.length > 0;
 
-  const previewColor =
-    colorHex.trim().length >= 3
-      ? colorHex.startsWith("#")
-        ? colorHex
-        : `#${colorHex}`
-      : null;
+  const colorPreviewHex = useMemo(() => {
+    if (!colorInput.trim()) return fil?.colorHexNormalized ?? fil?.colorHex ? `#${fil!.colorHex}` : null;
+    const normalized = normalizeColor(colorInput);
+    return normalized.colorHexNormalized ?? null;
+  }, [colorInput, fil]);
 
   const handleSave = async () => {
     if (!canSave) {
@@ -80,6 +95,11 @@ export default function EditFilamentScreen() {
     const parsedWeight = weight ? parseFloat(weight) : undefined;
     const parsedSpoolWeight = spoolWeight ? parseFloat(spoolWeight) : undefined;
     const parsedPrice = paidPrice ? parseFloat(paidPrice) : undefined;
+    const parsedDiameter = diameterMm ? parseFloat(diameterMm) : undefined;
+    const parsedPrintMin = printTempCMin ? parseInt(printTempCMin, 10) : undefined;
+    const parsedPrintMax = printTempCMax ? parseInt(printTempCMax, 10) : undefined;
+    const parsedBedMin = bedTempCMin ? parseInt(bedTempCMin, 10) : undefined;
+    const parsedBedMax = bedTempCMax ? parseInt(bedTempCMax, 10) : undefined;
 
     if (weight && (isNaN(parsedWeight!) || parsedWeight! <= 0)) {
       Alert.alert(t("common.error"), t("validation.weight_invalid"));
@@ -90,22 +110,26 @@ export default function EditFilamentScreen() {
       return;
     }
 
-    let hex = colorHex.trim();
-    if (hex && !hex.startsWith("#")) hex = "#" + hex;
-
     setSaving(true);
     try {
+      const spec: Record<string, number | undefined> = {};
+      if (parsedDiameter !== undefined) spec.diameterMm = parsedDiameter;
+      if (parsedPrintMin !== undefined) spec.printTempCMin = parsedPrintMin;
+      if (parsedPrintMax !== undefined) spec.printTempCMax = parsedPrintMax;
+      if (parsedBedMin !== undefined) spec.bedTempCMin = parsedBedMin;
+      if (parsedBedMax !== undefined) spec.bedTempCMax = parsedBedMax;
+
       const result = await updateFilament(localId, {
         name: name.trim(),
         material,
-        colorName: colorName.trim() || undefined,
-        colorHex: hex || undefined,
+        colorInput: colorInput.trim() || undefined,
         manufacturerLocalId: manufacturerLocalId || undefined,
         weight: parsedWeight,
         spoolWeight: parsedSpoolWeight,
         paidPrice: parsedPrice,
         shop: shop.trim() || undefined,
         comment: comment.trim() || undefined,
+        spec: Object.keys(spec).length > 0 ? spec : undefined,
       });
       if (result) {
         await reloadCatalog();
@@ -276,61 +300,7 @@ export default function EditFilamentScreen() {
           ]}
         >
           <Text style={[styles.label, { color: colors.textSecondary }]}>
-            {t("form.color_name")}
-          </Text>
-          <View style={styles.chipRow}>
-            {PRESET_COLORS.map((c) => (
-              <Pressable
-                key={c}
-                style={[
-                  styles.chip,
-                  {
-                    borderColor: colors.surfaceBorder,
-                    backgroundColor: colors.surfaceElevated,
-                  },
-                  colorName === c && {
-                    backgroundColor: `${colors.accent}20`,
-                    borderColor: colors.accent,
-                  },
-                ]}
-                onPress={() => {
-                  setColorName(colorName === c ? "" : c);
-                  Haptics.selectionAsync();
-                }}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    {
-                      color:
-                        colorName === c ? colors.accent : colors.textSecondary,
-                    },
-                  ]}
-                >
-                  {c}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: colors.surfaceElevated,
-                color: colors.text,
-                marginTop: 4,
-              },
-            ]}
-            value={colorName}
-            onChangeText={setColorName}
-            placeholder={`${t("form.color_name")} (${t("form.optional")})`}
-            placeholderTextColor={colors.textTertiary}
-            testID="input-filament-color-name"
-          />
-
-          <Text style={[styles.label, { color: colors.textSecondary }]}>
-            {t("form.color_hex")}
+            {t("form.color")}
           </Text>
           <View style={styles.colorRow}>
             <TextInput
@@ -342,22 +312,20 @@ export default function EditFilamentScreen() {
                   color: colors.text,
                 },
               ]}
-              value={colorHex}
-              onChangeText={setColorHex}
-              placeholder="#FF0000"
+              value={colorInput}
+              onChangeText={setColorInput}
+              placeholder={t("form.color_placeholder")}
               placeholderTextColor={colors.textTertiary}
-              autoCapitalize="characters"
-              maxLength={7}
               testID="input-filament-color"
             />
-            {previewColor && (
+            {colorPreviewHex ? (
               <View
                 style={[
                   styles.colorPreview,
-                  { backgroundColor: previewColor },
+                  { backgroundColor: colorPreviewHex },
                 ]}
               />
-            )}
+            ) : null}
           </View>
 
           <Text style={[styles.label, { color: colors.textSecondary }]}>
@@ -417,6 +385,117 @@ export default function EditFilamentScreen() {
             multiline
             numberOfLines={3}
           />
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.surfaceBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
+            {t("form.spec_section")}
+          </Text>
+
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {t("form.diameter_mm")}
+          </Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.surfaceElevated,
+                color: colors.text,
+              },
+            ]}
+            value={diameterMm}
+            onChangeText={setDiameterMm}
+            placeholder="1.75"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="decimal-pad"
+            testID="input-filament-diameter"
+          />
+
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {t("form.print_temp_c_min")} / {t("form.print_temp_c_max")}
+          </Text>
+          <View style={styles.rangeRow}>
+            <TextInput
+              style={[
+                styles.input,
+                styles.rangeInput,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  color: colors.text,
+                },
+              ]}
+              value={printTempCMin}
+              onChangeText={setPrintTempCMin}
+              placeholder="190"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numeric"
+              testID="input-filament-print-temp-min"
+            />
+            <Text style={[styles.rangeSep, { color: colors.textTertiary }]}>–</Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.rangeInput,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  color: colors.text,
+                },
+              ]}
+              value={printTempCMax}
+              onChangeText={setPrintTempCMax}
+              placeholder="220"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numeric"
+              testID="input-filament-print-temp-max"
+            />
+          </View>
+
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {t("form.bed_temp_c_min")} / {t("form.bed_temp_c_max")}
+          </Text>
+          <View style={styles.rangeRow}>
+            <TextInput
+              style={[
+                styles.input,
+                styles.rangeInput,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  color: colors.text,
+                },
+              ]}
+              value={bedTempCMin}
+              onChangeText={setBedTempCMin}
+              placeholder="55"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numeric"
+              testID="input-filament-bed-temp-min"
+            />
+            <Text style={[styles.rangeSep, { color: colors.textTertiary }]}>–</Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.rangeInput,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  color: colors.text,
+                },
+              ]}
+              value={bedTempCMax}
+              onChangeText={setBedTempCMax}
+              placeholder="65"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numeric"
+              testID="input-filament-bed-temp-max"
+            />
+          </View>
         </View>
 
         <View
@@ -675,6 +754,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
+  },
+  rangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  rangeInput: { flex: 1 },
+  rangeSep: {
+    fontSize: 18,
+    fontFamily: "Inter_400Regular",
   },
   saveBtn: {
     borderRadius: 14,

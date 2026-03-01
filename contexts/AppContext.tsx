@@ -42,6 +42,7 @@ import {
   DEFAULT_PAGE_SIZE,
 } from "@/src/core/application/SpoolListUseCase";
 import type { UpdateFilamentPatch, UpdateManufacturerPatch, UpdateSpoolPatch } from "@/src/core/ports";
+import { normalizeColor } from "@/src/core/application/filament/ColorNormalizer";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
 import {
@@ -56,7 +57,7 @@ function toViewSpool(sv: SpoolView): Spool {
         id: sv.filament.remoteId ?? 0,
         name: sv.filament.name,
         material: sv.filament.material,
-        color_name: sv.filament.colorName,
+        color_name: sv.filament.colorNameNormalized ?? sv.filament.colorNameRaw,
         color_hex: sv.filament.colorHex,
         vendor: sv.filament.manufacturer
           ? {
@@ -549,6 +550,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateFilament = useCallback(
     async (localId: string, patch: UpdateFilamentPatch): Promise<DomainFilament | null> => {
       if (!isPersistenceEnabled) {
+        const { colorInput, spec, ...restPatch } = patch;
+        const colorFields = colorInput !== undefined
+          ? normalizeColor(colorInput)
+          : {};
         const updated: DomainFilament | undefined = (() => {
           let found: DomainFilament | undefined;
           setFilaments((prev) =>
@@ -556,7 +561,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
               if (f.localId !== localId) return f;
               found = {
                 ...f,
-                ...patch,
+                ...restPatch,
+                ...colorFields,
+                spec: spec !== undefined ? { ...f.spec, ...spec } : f.spec,
                 lastModifiedAt: Date.now(),
               };
               return found;
@@ -710,7 +717,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             id: 0,
             name: fil?.name ?? "Unknown",
             material: fil?.material ?? "Unknown",
-            color_name: fil?.colorName,
+            color_name: fil?.colorNameNormalized ?? fil?.colorNameRaw,
             color_hex: fil?.colorHex,
             vendor: mfr ? { id: 0, name: mfr.name } : undefined,
             weight: fil?.weight,

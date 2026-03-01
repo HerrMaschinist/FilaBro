@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import * as schema from "./schema";
 
 const DB_NAME = "filabro.db";
-const CURRENT_SCHEMA_VERSION = 7;
+const CURRENT_SCHEMA_VERSION = 8;
 
 /**
  * Versioned SQL migrations.
@@ -163,8 +163,26 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
   {
     version: 7,
     statements: [
-      // Phase 5.2: human-readable color name field on filaments (local-only, not synced to Spoolman)
+      // Phase 5.2 initial: human-readable color name field on filaments (local-only)
       `ALTER TABLE filaments ADD COLUMN color_name TEXT`,
+    ],
+  },
+  {
+    version: 8,
+    statements: [
+      // Phase 5.2 full: three-level color model + FilamentSpec fields (all local-only)
+      `ALTER TABLE filaments ADD COLUMN color_name_raw TEXT`,
+      `ALTER TABLE filaments ADD COLUMN color_name_norm TEXT`,
+      `ALTER TABLE filaments ADD COLUMN color_hex_norm TEXT`,
+      `ALTER TABLE filaments ADD COLUMN diameter_mm REAL`,
+      `ALTER TABLE filaments ADD COLUMN print_temp_c_min INTEGER`,
+      `ALTER TABLE filaments ADD COLUMN print_temp_c_max INTEGER`,
+      `ALTER TABLE filaments ADD COLUMN bed_temp_c_min INTEGER`,
+      `ALTER TABLE filaments ADD COLUMN bed_temp_c_max INTEGER`,
+      // Seed: copy legacy color_name -> color_name_raw (preserves prior user data)
+      `UPDATE filaments SET color_name_raw = color_name WHERE color_name IS NOT NULL AND color_name_raw IS NULL`,
+      // Seed: copy Spoolman color_hex -> color_hex_norm, normalizing to #RRGGBB format
+      `UPDATE filaments SET color_hex_norm = CASE WHEN SUBSTR(color_hex,1,1)='#' THEN color_hex ELSE '#' || color_hex END WHERE color_hex IS NOT NULL AND color_hex_norm IS NULL`,
     ],
   },
 ];

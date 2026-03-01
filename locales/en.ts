@@ -234,6 +234,13 @@ const en = {
     paid_price: "Purchase price",
     shop: "Shop / vendor",
     optional: "optional",
+    color_placeholder: "e.g. Black, Schwarz, or #FF0000",
+    spec_section: "Filament Spec",
+    diameter_mm: "Diameter (mm)",
+    print_temp_c_min: "Min print temp (°C)",
+    print_temp_c_max: "Max print temp (°C)",
+    bed_temp_c_min: "Min bed temp (°C)",
+    bed_temp_c_max: "Max bed temp (°C)",
   },
   validation: {
     name_required: "Name is required",

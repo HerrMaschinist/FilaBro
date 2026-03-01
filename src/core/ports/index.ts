@@ -6,7 +6,7 @@
  */
 
 import type { Spool, SpoolView } from "@/src/core/domain/spool";
-import type { Filament } from "@/src/core/domain/filament";
+import type { Filament, FilamentSpec } from "@/src/core/domain/filament";
 import type { Manufacturer } from "@/src/core/domain/manufacturer";
 import type { UsageEvent } from "@/src/core/domain/usage";
 
@@ -91,7 +91,15 @@ export interface ISpoolRepository {
 export interface UpdateFilamentPatch {
   name?: string;
   material?: string;
-  colorName?: string;
+  /** Single UI field. FilamentUseCase runs ColorNormalizer and populates the three color fields below. */
+  colorInput?: string;
+  /** Set by FilamentUseCase after normalization — raw user input. */
+  colorNameRaw?: string;
+  /** Set by FilamentUseCase after normalization — canonical English color name. */
+  colorNameNormalized?: string;
+  /** Set by FilamentUseCase after normalization — #RRGGBB. */
+  colorHexNormalized?: string;
+  /** Spoolman-sourced hex — written by sync, not by user edits. */
   colorHex?: string;
   manufacturerLocalId?: string;
   weight?: number;
@@ -99,7 +107,10 @@ export interface UpdateFilamentPatch {
   comment?: string;
   paidPrice?: number;
   shop?: string;
+  spec?: Partial<FilamentSpec>;
 }
+
+export type { FilamentSpec };
 
 export interface CreateFilamentInput {
   name: string;

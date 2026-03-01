@@ -22,14 +22,34 @@ function chunk<T>(arr: T[], size: number): T[][] {
  */
 type FilamentRecord = Filament & { syncState: string };
 
+function rowToColorFields(row: typeof filaments.$inferSelect) {
+  return {
+    colorNameRaw: row.colorNameRaw ?? undefined,
+    colorNameNormalized: row.colorNameNormalized ?? undefined,
+    colorHexNormalized: row.colorHexNormalized ?? undefined,
+    colorHex: row.colorHex ?? undefined,
+  };
+}
+
+function rowToSpec(row: typeof filaments.$inferSelect) {
+  const spec = {
+    diameterMm: row.diameterMm ?? undefined,
+    printTempCMin: row.printTempCMin ?? undefined,
+    printTempCMax: row.printTempCMax ?? undefined,
+    bedTempCMin: row.bedTempCMin ?? undefined,
+    bedTempCMax: row.bedTempCMax ?? undefined,
+  };
+  const hasSpec = Object.values(spec).some((v) => v !== undefined);
+  return hasSpec ? spec : undefined;
+}
+
 function toFilamentRecord(row: typeof filaments.$inferSelect): FilamentRecord {
   return {
     localId: row.localId,
     remoteId: row.remoteId ?? undefined,
     name: row.name,
     material: row.material,
-    colorName: row.colorName ?? undefined,
-    colorHex: row.colorHex ?? undefined,
+    ...rowToColorFields(row),
     manufacturerLocalId: row.manufacturerLocalId ?? undefined,
     weight: row.weight ?? undefined,
     spoolWeight: row.spoolWeight ?? undefined,
@@ -39,6 +59,7 @@ function toFilamentRecord(row: typeof filaments.$inferSelect): FilamentRecord {
     comment: row.comment ?? undefined,
     paidPrice: row.paidPrice ?? undefined,
     shop: row.shop ?? undefined,
+    spec: rowToSpec(row),
     lastModifiedAt: row.lastModifiedAt,
     syncState: row.syncState,
   };
@@ -51,8 +72,7 @@ function toFilament(row: typeof filaments.$inferSelect): Filament {
     remoteId: row.remoteId ?? undefined,
     name: row.name,
     material: row.material,
-    colorName: row.colorName ?? undefined,
-    colorHex: row.colorHex ?? undefined,
+    ...rowToColorFields(row),
     manufacturerLocalId: row.manufacturerLocalId ?? undefined,
     weight: row.weight ?? undefined,
     spoolWeight: row.spoolWeight ?? undefined,
@@ -62,6 +82,7 @@ function toFilament(row: typeof filaments.$inferSelect): Filament {
     comment: row.comment ?? undefined,
     paidPrice: row.paidPrice ?? undefined,
     shop: row.shop ?? undefined,
+    spec: rowToSpec(row),
     lastModifiedAt: row.lastModifiedAt,
   };
 }
@@ -133,7 +154,9 @@ export const FilamentRepository = {
   async createLocal(data: {
     name: string;
     material: string;
-    colorName?: string;
+    colorNameRaw?: string;
+    colorNameNormalized?: string;
+    colorHexNormalized?: string;
     colorHex?: string;
     manufacturerLocalId?: string;
     weight?: number;
@@ -146,7 +169,9 @@ export const FilamentRepository = {
       localId,
       name: data.name,
       material: data.material,
-      colorName: data.colorName ?? null,
+      colorNameRaw: data.colorNameRaw ?? null,
+      colorNameNormalized: data.colorNameNormalized ?? null,
+      colorHexNormalized: data.colorHexNormalized ?? null,
       colorHex: data.colorHex ?? null,
       manufacturerLocalId: data.manufacturerLocalId ?? null,
       weight: data.weight ?? null,
@@ -164,7 +189,9 @@ export const FilamentRepository = {
     data: {
       name?: string;
       material?: string;
-      colorName?: string;
+      colorNameRaw?: string;
+      colorNameNormalized?: string;
+      colorHexNormalized?: string;
       colorHex?: string;
       manufacturerLocalId?: string;
       weight?: number;
@@ -172,6 +199,7 @@ export const FilamentRepository = {
       comment?: string;
       paidPrice?: number;
       shop?: string;
+      spec?: Partial<import("../../core/domain/filament").FilamentSpec>;
     }
   ): Promise<Filament | null> {
     const rows = await getDb()
@@ -188,7 +216,12 @@ export const FilamentRepository = {
     if (existing.syncState === "synced") payload.syncState = "dirty";
     if (data.name !== undefined) payload.name = data.name;
     if (data.material !== undefined) payload.material = data.material;
-    if (data.colorName !== undefined) payload.colorName = data.colorName || null;
+    if (data.colorNameRaw !== undefined)
+      payload.colorNameRaw = data.colorNameRaw || null;
+    if (data.colorNameNormalized !== undefined)
+      payload.colorNameNormalized = data.colorNameNormalized || null;
+    if (data.colorHexNormalized !== undefined)
+      payload.colorHexNormalized = data.colorHexNormalized || null;
     if (data.colorHex !== undefined) payload.colorHex = data.colorHex || null;
     if (data.manufacturerLocalId !== undefined)
       payload.manufacturerLocalId = data.manufacturerLocalId;
@@ -197,21 +230,65 @@ export const FilamentRepository = {
     if (data.comment !== undefined) payload.comment = data.comment;
     if (data.paidPrice !== undefined) payload.paidPrice = data.paidPrice;
     if (data.shop !== undefined) payload.shop = data.shop || null;
+    if (data.spec !== undefined) {
+      if (data.spec.diameterMm !== undefined)
+        payload.diameterMm = data.spec.diameterMm;
+      if (data.spec.printTempCMin !== undefined)
+        payload.printTempCMin = data.spec.printTempCMin;
+      if (data.spec.printTempCMax !== undefined)
+        payload.printTempCMax = data.spec.printTempCMax;
+      if (data.spec.bedTempCMin !== undefined)
+        payload.bedTempCMin = data.spec.bedTempCMin;
+      if (data.spec.bedTempCMax !== undefined)
+        payload.bedTempCMax = data.spec.bedTempCMax;
+    }
 
     await getDb()
       .update(filaments)
       .set(payload)
       .where(eq(filaments.localId, localId));
 
+    const mergedSpec = {
+      diameterMm:
+        data.spec?.diameterMm !== undefined
+          ? data.spec.diameterMm
+          : existing.spec?.diameterMm,
+      printTempCMin:
+        data.spec?.printTempCMin !== undefined
+          ? data.spec.printTempCMin
+          : existing.spec?.printTempCMin,
+      printTempCMax:
+        data.spec?.printTempCMax !== undefined
+          ? data.spec.printTempCMax
+          : existing.spec?.printTempCMax,
+      bedTempCMin:
+        data.spec?.bedTempCMin !== undefined
+          ? data.spec.bedTempCMin
+          : existing.spec?.bedTempCMin,
+      bedTempCMax:
+        data.spec?.bedTempCMax !== undefined
+          ? data.spec.bedTempCMax
+          : existing.spec?.bedTempCMax,
+    };
+    const hasSpec = Object.values(mergedSpec).some((v) => v !== undefined);
+
     return {
       localId: existing.localId,
       remoteId: existing.remoteId,
       name: data.name !== undefined ? data.name : existing.name,
       material: data.material !== undefined ? data.material : existing.material,
-      colorName:
-        data.colorName !== undefined
-          ? data.colorName || undefined
-          : existing.colorName,
+      colorNameRaw:
+        data.colorNameRaw !== undefined
+          ? data.colorNameRaw || undefined
+          : existing.colorNameRaw,
+      colorNameNormalized:
+        data.colorNameNormalized !== undefined
+          ? data.colorNameNormalized || undefined
+          : existing.colorNameNormalized,
+      colorHexNormalized:
+        data.colorHexNormalized !== undefined
+          ? data.colorHexNormalized || undefined
+          : existing.colorHexNormalized,
       colorHex:
         data.colorHex !== undefined
           ? data.colorHex || undefined
@@ -227,8 +304,8 @@ export const FilamentRepository = {
         data.comment !== undefined ? data.comment || undefined : existing.comment,
       paidPrice:
         data.paidPrice !== undefined ? data.paidPrice : existing.paidPrice,
-      shop:
-        data.shop !== undefined ? data.shop || undefined : existing.shop,
+      shop: data.shop !== undefined ? data.shop || undefined : existing.shop,
+      spec: hasSpec ? mergedSpec : undefined,
       lastModifiedAt: now,
     };
   },

@@ -1,0 +1,122 @@
+# PHASE 5.2 – Filament Spec Basis + Farbe Normalisierung (mitdenken, nicht blind)
+
+Du arbeitest im bestehenden FilaBro Repo. Offline First bleibt Quelle der Wahrheit. Domain ist rein.
+
+Ziel dieser Phase
+1. Filament bekommt Basis Spec Felder für Druckrelevanz.
+2. Farbe wird robust: Name oder Hex Eingabe, automatische Erkennung für bekannte Farben, ohne unsichere Guessing.
+3. Migration ohne Datenverlust.
+4. Bestehende UI bleibt funktionsfähig. Edit Filament bekommt die neuen Felder minimal ergänzt.
+
+Nicht verhandelbar
+1. Keine neue Architektur, kein Refactor. Inkrementell.
+2. Domain bleibt rein. Keine infra Imports in /src/core/domain.
+3. Alles mit Dateipfaden und Diff oder kompletter Datei.
+4. TypeScript am Ende 0 Fehler.
+5. App nach Migration einmal neu starten.
+
+## Schritt 1: Domain Modell erweitern
+Erweitere /src/core/domain/filament.ts
+
+Füge hinzu:
+
+interface FilamentSpec {
+  diameterMm?: number;           // 1.75 oder 2.85
+  printTempCMin?: number;
+  printTempCMax?: number;
+  bedTempCMin?: number;
+  bedTempCMax?: number;
+}
+
+In Filament:
+- spec?: FilamentSpec
+
+Farbe als 2 Ebenen:
+- colorNameRaw?: string          // genau das, was der User tippt oder auswählt
+- colorNameNormalized?: string   // z.B. "Black", "White", "Gray"
+- colorHexNormalized?: string    // #RRGGBB
+
+Legacy Feld:
+- Falls es bisher nur colorHex oder colorHex gibt, mappe es auf colorHexNormalized und belasse legacy kompatibel.
+
+## Schritt 2: DB Schema Migration v7
+Erweitere Tabelle filaments additiv um:
+- diameter_mm REAL NULL
+- print_temp_c_min INTEGER NULL
+- print_temp_c_max INTEGER NULL
+- bed_temp_c_min INTEGER NULL
+- bed_temp_c_max INTEGER NULL
+- color_name_raw TEXT NULL
+- color_name_norm TEXT NULL
+- color_hex_norm TEXT NULL
+
+Keine Daten löschen.
+Kein Seed außer:
+- falls bisher color_hex existiert, migriere es nach color_hex_norm wenn color_hex_norm NULL ist (nur Kopie, keine Interpretation).
+
+Dateien:
+- /src/data/db/schema.ts
+- /src/data/db/client.ts
+
+## Schritt 3: Ports + Repo Mapping + updateLocal Patch
+Update /src/core/ports/index.ts
+- UpdateFilamentPatch bekommt:
+  - spec?: Partial<FilamentSpec>
+  - colorInput?: string           // einziges UI Feld, kann Name oder Hex sein
+  - optional: colorNameRaw, colorNameNormalized, colorHexNormalized für interne Nutzung
+
+Update /src/data/repositories/FilamentRepository.ts
+- toFilament mappt neue Spalten null -> undefined
+- updateLocal schreibt alle neuen Felder
+- dirtyFields trackt sauber
+
+## Schritt 4: Farbe Normalisierung in Application Layer
+Erstelle /src/core/application/filament/ColorNormalizer.ts
+
+Regeln:
+- Input string trim, lower
+- Wenn Hex Pattern, normalisiere auf #RRGGBB und setze colorHexNormalized
+- Wenn Text, mappe über Alias Tabelle:
+  - schwarz, black -> Black + #000000
+  - weiß, weiss, white -> White + #FFFFFF
+  - grau, gray, grey -> Gray + #808080
+  - rot, red -> Red + #FF0000
+  - grün, green -> Green + #00FF00
+  - blau, blue -> Blue + #0000FF
+  - gelb, yellow -> Yellow + #FFFF00
+  - orange -> Orange + #FFA500
+  - lila, purple -> Purple + #800080
+  - pink -> Pink + #FFC0CB
+  - braun, brown -> Brown + #8B4513
+- Wenn kein Match: setze colorNameRaw = original, normalized und hex bleiben undefined
+
+Update /src/core/application/FilamentUseCase.ts
+- updateFilament(localId, patch):
+  - wenn patch.colorInput gesetzt, normalisiere und setze Felder
+  - wenn patch.spec gesetzt, übernehme Werte
+  - ruft repo.updateLocal mit finalem Patch
+
+## Schritt 5: UI Edit Filament minimal erweitern
+In deinem Filament Edit Screen:
+- Ein Feld "Farbe" als TextInput
+  Placeholder: "z.B. schwarz oder #ffffff"
+- Ein Feld "Durchmesser" als Auswahl 1.75 oder 2.85 oder Freitext numeric
+- Zwei Felder Drucktemp min max
+- Zwei Felder Bett temp min max
+
+Beim Speichern:
+- colorInput: der String aus dem Feld
+- spec: diameterMm und temp Werte
+- Rest unverändert
+
+Anzeige:
+- In Filament Card zeige bevorzugt colorNameNormalized sonst colorNameRaw sonst colorHexNormalized
+
+## Verifikation
+1) npx tsc --noEmit
+2) App Neustart:
+   npx expo start -c
+3) Manuell:
+- Filament bearbeiten, Farbe "weiß" speichern -> Anzeige White und Hex #FFFFFF
+- Filament bearbeiten, Farbe "#000000" speichern -> Hex gesetzt, Name bleibt optional
+- Durchmesser 1.75 speichern und wieder öffnen -> bleibt persistiert

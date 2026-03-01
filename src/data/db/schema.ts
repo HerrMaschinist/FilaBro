@@ -25,8 +25,16 @@ export const filaments = sqliteTable("filaments", {
   remoteId: integer("remote_id"),
   name: text("name").notNull(),
   material: text("material").notNull(),
+  /** Legacy color name field (v7). Superseded by colorNameRaw. Kept to avoid DROP. */
   colorName: text("color_name"),
+  /** Spoolman-sourced hex — written by sync engine, not user edits. */
   colorHex: text("color_hex"),
+  /** v8: Exactly what the user typed or selected. Local-only. */
+  colorNameRaw: text("color_name_raw"),
+  /** v8: Canonical English color name (e.g. "Black"). Local-only. */
+  colorNameNormalized: text("color_name_norm"),
+  /** v8: User-set #RRGGBB. Local-only. */
+  colorHexNormalized: text("color_hex_norm"),
   manufacturerLocalId: text("manufacturer_local_id"),
   weight: real("weight"),
   spoolWeight: real("spool_weight"),
@@ -38,6 +46,12 @@ export const filaments = sqliteTable("filaments", {
   paidPrice: real("paid_price"),
   /** Shop/vendor name — local-only, never synced to Spoolman. */
   shop: text("shop"),
+  /** v8: FilamentSpec fields — local-only. */
+  diameterMm: real("diameter_mm"),
+  printTempCMin: integer("print_temp_c_min"),
+  printTempCMax: integer("print_temp_c_max"),
+  bedTempCMin: integer("bed_temp_c_min"),
+  bedTempCMax: integer("bed_temp_c_max"),
   syncState: text("sync_state").notNull().default("synced"),
   lastModifiedAt: integer("last_modified_at").notNull(),
 });

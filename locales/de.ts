@@ -235,6 +235,13 @@ const de = {
     paid_price: "Kaufpreis",
     shop: "Shop / Händler",
     optional: "optional",
+    color_placeholder: "z.B. Schwarz, Black oder #FF0000",
+    spec_section: "Filament-Spezifikation",
+    diameter_mm: "Durchmesser (mm)",
+    print_temp_c_min: "Min. Drucktemperatur (°C)",
+    print_temp_c_max: "Max. Drucktemperatur (°C)",
+    bed_temp_c_min: "Min. Betttemperatur (°C)",
+    bed_temp_c_max: "Max. Betttemperatur (°C)",
   },
   validation: {
     name_required: "Name ist erforderlich",

@@ -145,7 +145,9 @@ const JOIN_SELECT = {
   f_remoteId: filaments.remoteId,
   f_name: filaments.name,
   f_material: filaments.material,
-  f_colorName: filaments.colorName,
+  f_colorNameRaw: filaments.colorNameRaw,
+  f_colorNameNormalized: filaments.colorNameNormalized,
+  f_colorHexNormalized: filaments.colorHexNormalized,
   f_colorHex: filaments.colorHex,
   f_manufacturerLocalId: filaments.manufacturerLocalId,
   f_weight: filaments.weight,
@@ -156,6 +158,11 @@ const JOIN_SELECT = {
   f_comment: filaments.comment,
   f_paidPrice: filaments.paidPrice,
   f_shop: filaments.shop,
+  f_diameterMm: filaments.diameterMm,
+  f_printTempCMin: filaments.printTempCMin,
+  f_printTempCMax: filaments.printTempCMax,
+  f_bedTempCMin: filaments.bedTempCMin,
+  f_bedTempCMax: filaments.bedTempCMax,
   f_lastModifiedAt: filaments.lastModifiedAt,
   m_localId: manufacturers.localId,
   m_remoteId: manufacturers.remoteId,
@@ -189,7 +196,9 @@ type JoinRow = {
   f_remoteId: number | null;
   f_name: string | null;
   f_material: string | null;
-  f_colorName: string | null;
+  f_colorNameRaw: string | null;
+  f_colorNameNormalized: string | null;
+  f_colorHexNormalized: string | null;
   f_colorHex: string | null;
   f_manufacturerLocalId: string | null;
   f_weight: number | null;
@@ -200,6 +209,11 @@ type JoinRow = {
   f_comment: string | null;
   f_paidPrice: number | null;
   f_shop: string | null;
+  f_diameterMm: number | null;
+  f_printTempCMin: number | null;
+  f_printTempCMax: number | null;
+  f_bedTempCMin: number | null;
+  f_bedTempCMax: number | null;
   f_lastModifiedAt: number | null;
   m_localId: string | null;
   m_remoteId: number | null;
@@ -234,12 +248,22 @@ function rowToSpoolView(row: JoinRow): SpoolView {
 
   let filament: (Filament & { manufacturer?: Manufacturer }) | undefined;
   if (row.f_localId) {
+    const fSpec = {
+      diameterMm: row.f_diameterMm ?? undefined,
+      printTempCMin: row.f_printTempCMin ?? undefined,
+      printTempCMax: row.f_printTempCMax ?? undefined,
+      bedTempCMin: row.f_bedTempCMin ?? undefined,
+      bedTempCMax: row.f_bedTempCMax ?? undefined,
+    };
+    const hasFSpec = Object.values(fSpec).some((v) => v !== undefined);
     filament = {
       localId: row.f_localId,
       remoteId: row.f_remoteId ?? undefined,
       name: row.f_name!,
       material: row.f_material!,
-      colorName: row.f_colorName ?? undefined,
+      colorNameRaw: row.f_colorNameRaw ?? undefined,
+      colorNameNormalized: row.f_colorNameNormalized ?? undefined,
+      colorHexNormalized: row.f_colorHexNormalized ?? undefined,
       colorHex: row.f_colorHex ?? undefined,
       manufacturerLocalId: row.f_manufacturerLocalId ?? undefined,
       weight: row.f_weight ?? undefined,
@@ -250,6 +274,7 @@ function rowToSpoolView(row: JoinRow): SpoolView {
       comment: row.f_comment ?? undefined,
       paidPrice: row.f_paidPrice ?? undefined,
       shop: row.f_shop ?? undefined,
+      spec: hasFSpec ? fSpec : undefined,
       lastModifiedAt: row.f_lastModifiedAt!,
       manufacturer,
     };
