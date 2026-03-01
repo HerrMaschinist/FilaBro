@@ -34,6 +34,10 @@ import { CatalogUseCase } from "@/src/core/application/CatalogUseCase";
 import { SyncUseCase } from "@/src/core/application/SyncUseCase";
 import { SpoolUseCase } from "@/src/core/application/SpoolUseCase";
 import { WeightUseCase } from "@/src/core/application/WeightUseCase";
+import {
+  SpoolListUseCase,
+  DEFAULT_PAGE_SIZE,
+} from "@/src/core/application/SpoolListUseCase";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
 import {
@@ -129,6 +133,15 @@ interface AppContextValue {
   lastSync: number | null;
   refreshSpools: () => Promise<void>;
 
+  /** Phase 5: pagination */
+  hasMoreSpools: boolean;
+  isLoadingMoreSpools: boolean;
+  loadNextPage: () => Promise<void>;
+
+  /** Phase 5: indexed QR / NFC lookup */
+  findSpoolByQrCode: (qr: string) => Promise<Spool | null>;
+  findSpoolByNfcTagId: (tagId: string) => Promise<Spool | null>;
+
   favorites: number[];
   toggleFavorite: (id: number) => void;
   isFavorite: (id: number) => boolean;
@@ -197,6 +210,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [filaments, setFilaments] = useState<DomainFilament[]>([]);
 
+  // Phase 5: pagination state
+  const [spoolPage, setSpoolPage] = useState(0);
+  const [hasMoreSpools, setHasMoreSpools] = useState(false);
+  const [isLoadingMoreSpools, setIsLoadingMoreSpools] = useState(false);
+
+  /**
+   * Load (or reload) the first page of spools.
+   * Resets page to 0 and replaces the spool list.
+   */
+  const loadFirstPage = useCallback(async () => {
+    if (!isPersistenceEnabled) return;
+    const views = await SpoolListUseCase.listSpoolsPage(0, DEFAULT_PAGE_SIZE);
+    setSpools(views.map(toViewSpool));
+    setSpoolPage(0);
+    setHasMoreSpools(views.length === DEFAULT_PAGE_SIZE);
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -233,8 +263,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setOpenConflictCount(conflictCount);
 
           if (onboarded) {
-            const local = await SyncUseCase.getLocalSpools();
-            setSpools(local.map(toViewSpool));
+            // Phase 5: load first page instead of all spools
+            const views = await SpoolListUseCase.listSpoolsPage(0, DEFAULT_PAGE_SIZE);
+            setSpools(views.map(toViewSpool));
+            setSpoolPage(0);
+            setHasMoreSpools(views.length === DEFAULT_PAGE_SIZE);
           }
         } else {
           setManufacturers(DEMO_MANUFACTURERS);
@@ -281,12 +314,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const isConnected = connectionStatus === "connected";
 
-  const reloadLocalSpools = useCallback(async () => {
-    if (!isPersistenceEnabled) return;
-    const local = await SyncUseCase.getLocalSpools();
-    setSpools(local.map(toViewSpool));
-  }, []);
-
   const refreshSpools = useCallback(async () => {
     if (!serverUrl) return;
 
@@ -302,17 +329,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       const result = await SyncUseCase.sync(serverUrl);
-      const [local, conflictCount] = await Promise.all([
-        SyncUseCase.getLocalSpools(),
-        SyncUseCase.getOpenConflictCount(),
-      ]);
-      setSpools(local.map(toViewSpool));
+      const conflictCount = await SyncUseCase.getOpenConflictCount();
       setOpenConflictCount(conflictCount);
+
+      // Phase 5: reload first page after sync
+      const views = await SpoolListUseCase.listSpoolsPage(0, DEFAULT_PAGE_SIZE);
+      setSpools(views.map(toViewSpool));
+      setSpoolPage(0);
+      setHasMoreSpools(views.length === DEFAULT_PAGE_SIZE);
 
       if (
         result.errors.length > 0 &&
         result.pulled === 0 &&
-        local.length === 0
+        views.length === 0
       ) {
         setSpoolsError(result.errors[0]);
         setIsOnline(false);
@@ -326,12 +355,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const msg = err instanceof Error ? err.message : "Unknown sync error";
       setSpoolsError(msg);
       setIsOnline(false);
-      const local = await SyncUseCase.getLocalSpools();
-      setSpools(local.map(toViewSpool));
+      // Phase 5: reload first page even on error (show what we have locally)
+      await loadFirstPage();
     } finally {
       setIsSpoolsLoading(false);
     }
-  }, [serverUrl]);
+  }, [serverUrl, loadFirstPage]);
+
+  /**
+   * Phase 5: load the next page of spools and append to the list.
+   * No-op if there are no more pages or if already loading.
+   */
+  const loadNextPage = useCallback(async () => {
+    if (!isPersistenceEnabled || !hasMoreSpools || isLoadingMoreSpools) return;
+    const nextPage = spoolPage + 1;
+    setIsLoadingMoreSpools(true);
+    try {
+      const views = await SpoolListUseCase.listSpoolsPage(nextPage, DEFAULT_PAGE_SIZE);
+      if (views.length > 0) {
+        setSpools((prev) => [...prev, ...views.map(toViewSpool)]);
+        setSpoolPage(nextPage);
+      }
+      setHasMoreSpools(views.length === DEFAULT_PAGE_SIZE);
+    } finally {
+      setIsLoadingMoreSpools(false);
+    }
+  }, [hasMoreSpools, isLoadingMoreSpools, spoolPage]);
+
+  /**
+   * Phase 5: indexed QR code lookup — O(log n) via idx_spools_qr_code.
+   */
+  const findSpoolByQrCode = useCallback(async (qr: string): Promise<Spool | null> => {
+    if (!isPersistenceEnabled) return null;
+    const view = await SpoolListUseCase.findByQrCode(qr);
+    return view ? toViewSpool(view) : null;
+  }, []);
+
+  /**
+   * Phase 5: indexed NFC tag lookup — O(log n) via idx_spools_nfc_tag_id.
+   */
+  const findSpoolByNfcTagId = useCallback(async (tagId: string): Promise<Spool | null> => {
+    if (!isPersistenceEnabled) return null;
+    const view = await SpoolListUseCase.findByNfcTagId(tagId);
+    return view ? toViewSpool(view) : null;
+  }, []);
 
   const favorites = useMemo(
     () => spools.filter((s) => s._isFavorite).map((s) => s.id),
@@ -419,13 +486,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!serverUrl) return;
     try {
       await SyncUseCase.push(serverUrl);
-      const local = await SyncUseCase.getLocalSpools();
-      setSpools(local.map(toViewSpool));
+      // Phase 5: reload first page after push
+      await loadFirstPage();
       setIsOnline(true);
     } catch {
       setIsOnline(false);
     }
-  }, [serverUrl]);
+  }, [serverUrl, loadFirstPage]);
 
   const pendingUpdates = useMemo<PendingUpdate[]>(
     () =>
@@ -552,13 +619,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       try {
         await CatalogUseCase.createSpool(data);
-        await reloadLocalSpools();
+        // Phase 5: reset to page 0 after create
+        await loadFirstPage();
         return true;
       } catch {
         return false;
       }
     },
-    [filaments, manufacturers, reloadLocalSpools]
+    [filaments, manufacturers, loadFirstPage]
   );
 
   const deleteManufacturer = useCallback(
@@ -613,13 +681,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       try {
         await CatalogUseCase.deleteSpool(localId);
-        await reloadLocalSpools();
+        // Phase 5: reset to page 0 after delete
+        await loadFirstPage();
         return true;
       } catch {
         return false;
       }
     },
-    [reloadLocalSpools]
+    [loadFirstPage]
   );
 
   const value = useMemo<AppContextValue>(
@@ -635,6 +704,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       spoolsError,
       lastSync,
       refreshSpools,
+      hasMoreSpools,
+      isLoadingMoreSpools,
+      loadNextPage,
+      findSpoolByQrCode,
+      findSpoolByNfcTagId,
       favorites,
       toggleFavorite,
       isFavorite,
@@ -674,6 +748,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       spoolsError,
       lastSync,
       refreshSpools,
+      hasMoreSpools,
+      isLoadingMoreSpools,
+      loadNextPage,
+      findSpoolByQrCode,
+      findSpoolByNfcTagId,
       favorites,
       toggleFavorite,
       isFavorite,

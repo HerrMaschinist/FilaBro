@@ -67,13 +67,25 @@ Three-layer architecture: API → Repository → Domain
 
 - **Engine**: `expo-sqlite` (SQLite on-device)
 - **ORM**: `drizzle-orm` with SQLite dialect
-- **Schema** (`src/data/db/schema.ts`): Tables for `manufacturers`, `filaments`, `spools`, `syncMeta`, and `pendingUpdates`
+- **Schema** (`src/data/db/schema.ts`): Tables for `manufacturers`, `filaments`, `spools`, `syncMeta`, `conflict_snapshots`, `usage_events`, `spool_stats`
   - manufacturers: `website` text field
   - filaments: `printTempMin` int, `printTempMax` int, `density` real
-  - spools: `displayName` text, `qrCode` text, `nfcTagId` text
-- **Migrations**: Versioned SQL migration array in `src/data/db/client.ts`. Append-only — never edit existing entries. `CURRENT_SCHEMA_VERSION = 2`.
-- **Web fallback** (`src/data/db/client.web.ts`): Metro resolves this file instead of `client.ts` on web. All reads return `[]`, all writes reject. `isPersistenceEnabled = false`. Repositories are unaware of this — they just call `getDb()`.
-- **Web demo mode**: When `isPersistenceEnabled === false`, AppContext seeds 6 demo spools, 4 demo manufacturers, and 6 demo filaments from `src/data/demo/demoData.ts`. Favorites toggle, weight edits, and catalog CRUD work in-memory only. A `WebPreviewBanner` component shows "Web Preview — data is not persisted" on web.
+  - spools: `displayName` text, `qrCode` text, `nfcTagId` text, `archived` int
+  - spool_stats: `remaining_weight` int (Phase 4 source of truth for weight), `updated_at` int
+  - usage_events: append-only weight audit log (Phase 4)
+- **Migrations**: Versioned SQL migration array in `src/data/db/client.ts`. Append-only — never edit. `CURRENT_SCHEMA_VERSION = 5`.
+  - v1: base schema
+  - v2: website, printTemp, displayName, qrCode, nfcTagId fields
+  - v3: conflict_snapshots table
+  - v4: usage_events + spool_stats tables; seeds spool_stats from spools.remaining_weight
+  - v5: 6 performance indexes (archived, filament_local_id, qr_code, nfc_tag_id, last_modified_at, manufacturer_local_id)
+- **Phase 5 — Batch-first sync**: `pullWithConflictPolicy()` in `SyncUseCase` now pre-fetches all manufacturer/filament/spool records in batch before the entity loop. O(6) total DB queries instead of O(5N). Uses `getMapByRemoteIds()` on each repo for O(1) map lookups.
+- **Phase 5 — JOIN views**: `SpoolRepository.getAllView()`, `getByLocalIdView()`, `getPagedView()` all use a single LEFT JOIN across spools + filaments + manufacturers + spool_stats. Eliminates N+1 query pattern.
+- **Phase 5 — Pagination**: `SpoolListUseCase` provides `listSpoolsPage(page, pageSize)`. AppContext exposes `loadNextPage()`, `hasMoreSpools`, `isLoadingMoreSpools`. FlatList in index.tsx uses `onEndReached` to load more.
+- **Phase 5 — Indexed lookups**: `findByQrCode(qr)` and `findByNfcTagId(tagId)` use O(log n) indexed queries. Exposed in AppContext as `findSpoolByQrCode` / `findSpoolByNfcTagId`.
+- **Weight source of truth**: `spool_stats.remaining_weight` (Phase 4+). `spools.remaining_weight` is legacy/init-only and used for remote identity comparison in sync.
+- **SpoolSyncRecord** extended with all identity-check fields — no second `getByLocalId()` needed in sync loop.
+- **Web demo mode**: When `isPersistenceEnabled === false`, AppContext seeds demo data. All CRUD and weight edits work in-memory. A `WebPreviewBanner` shows on web.
 - **Error classes** (`src/data/api/errors.ts`): `NetworkError`, `TimeoutError`, `ApiError`, `ParseError`, `UnsupportedFeatureError` + `classifyFetchError()` utility.
 
 ### Storage

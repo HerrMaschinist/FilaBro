@@ -5,54 +5,64 @@
  * Uses getDb() exclusively — no Platform.OS checks, no null guards.
  * On web, getDb() returns a NullProxy → all queries resolve to [].
  *
- * Phase 3 changes:
- *   - Removed `upsertFromRemote()` — contained server-wins policy.
- *   - Added `applyRemoteSpoolUpdate()` — pure data write, called by Application Layer.
- *   - Added `insertSpoolFromRemote()` — insert unknown remote entity, no policy.
- *   - Added `setSyncState()` — explicit state control for Application Layer.
- *   - All conflict policy decisions belong in SyncUseCase, not here.
- *
- * Phase 4 changes:
- *   - `updateRemainingWeight()` is deprecated. It no longer writes
- *     `spools.remaining_weight` — that column is now the legacy/initial value.
- *     The projected remaining weight lives in `spool_stats` (SpoolStatsRepository).
- *   - Added `markWeightPendingPush()` — marks spool as pending_push for sync
- *     without touching `remaining_weight` in the spools table.
- *   - `getAllView()` batch-loads spool_stats to supply `remainingWeight` in SpoolView.
- *   - `getByLocalIdView()` prefers spool_stats for `remainingWeight`.
- *   - `createLocal()` still writes `spools.remaining_weight` as the initial value
- *     (seeded to spool_stats by CatalogUseCase after the insert).
- *   - `applyRemoteSpoolUpdate()` still writes `spools.remaining_weight` from remote
- *     data (migration/init path; SyncUseCase also seeds spool_stats after this call).
- *   - `insertSpoolFromRemote()` still writes `spools.remaining_weight` from remote
- *     data (initial insert path; SyncUseCase also seeds spool_stats after this call).
+ * Phase 5 changes:
+ *   - getAllView() now uses a single LEFT JOIN query across spools, filaments,
+ *     manufacturers, and spool_stats — eliminates the N+1 query pattern.
+ *   - getByLocalIdView() likewise uses a single JOIN query.
+ *   - getPagedView(offset, limit) — paged JOIN query for 1000+ spool scale.
+ *   - countSpools() — COUNT(*) for pagination UI.
+ *   - findByQrCode() / findByNfcTagId() — indexed single-row lookups.
+ *   - insertManyFromRemote() — batch insert for sync pull optimisation.
+ *   - getMapByRemoteIds() — batch SELECT → Map for O(1) lookup in SyncUseCase.
+ *   - SpoolSyncRecord extended with identity-check fields so SyncUseCase no
+ *     longer needs a second getByLocalId() call per spool.
  */
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, desc, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { spools, InsertSpool } from "../db/schema";
+import { spools, filaments, manufacturers, spoolStats, InsertSpool } from "../db/schema";
 import type { Spool, SpoolView } from "../../domain/models";
-import { FilamentRepository } from "./FilamentRepository";
-import { ManufacturerRepository } from "./ManufacturerRepository";
-import { SpoolStatsRepository } from "./SpoolStatsRepository";
+import type { Filament } from "../../domain/models";
+import type { Manufacturer } from "../../domain/models";
 
 function generateLocalId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 }
 
+/** Chunk an array into sub-arrays of at most `size` elements. */
+function chunk<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
+
 /**
- * Adapter-layer type that includes sync metadata.
- * Only returned by getDirty() and getRecordByLocalId().
+ * Adapter-layer type that includes sync metadata + all fields needed for
+ * remote identity comparison. Only returned by getRecordByLocalId(),
+ * getMapByRemoteIds(), and related adapter-layer methods.
  * Never passed to the UI or use-case layer as a Spool.
  */
 export interface SpoolSyncRecord {
   localId: string;
   remoteId?: number;
-  /** Legacy: remaining_weight from spools table. Use spool_stats for current truth. */
+  /** Legacy: remaining_weight from spools table — used for remote identity comparison only. */
   remainingWeight?: number;
   syncState: string;
   dirtyFields: string[];
   localVersion: number;
   remoteVersion?: number;
+  /** All fields below are included for isSpoolRemoteIdentical — avoids second getByLocalId() call. */
+  filamentLocalId?: string;
+  initialWeight?: number;
+  spoolWeight?: number;
+  usedWeight?: number;
+  comment?: string;
+  archived: boolean;
+  lotNr?: string;
+  lastUsed?: string;
+  firstUsed?: string;
+  registered?: string;
 }
 
 /** Maps a DB row to the clean domain Spool (no sync fields). */
@@ -79,7 +89,7 @@ function toSpool(row: typeof spools.$inferSelect): Spool {
   };
 }
 
-/** Maps a DB row to SpoolSyncRecord (includes sync metadata). */
+/** Maps a DB row to SpoolSyncRecord (includes sync metadata + identity fields). */
 function toSpoolSyncRecord(row: typeof spools.$inferSelect): SpoolSyncRecord {
   let dirtyFields: string[] = [];
   if (row.dirtyFields) {
@@ -97,8 +107,169 @@ function toSpoolSyncRecord(row: typeof spools.$inferSelect): SpoolSyncRecord {
     dirtyFields,
     localVersion: row.localVersion,
     remoteVersion: row.remoteVersion ?? undefined,
+    filamentLocalId: row.filamentLocalId ?? undefined,
+    initialWeight: row.initialWeight ?? undefined,
+    spoolWeight: row.spoolWeight ?? undefined,
+    usedWeight: row.usedWeight ?? undefined,
+    comment: row.comment ?? undefined,
+    archived: row.archived === 1,
+    lotNr: row.lotNr ?? undefined,
+    lastUsed: row.lastUsed ?? undefined,
+    firstUsed: row.firstUsed ?? undefined,
+    registered: row.registered ?? undefined,
   };
 }
+
+// ─── JOIN query helpers ───────────────────────────────────────────────────────
+
+const JOIN_SELECT = {
+  s_localId: spools.localId,
+  s_remoteId: spools.remoteId,
+  s_filamentLocalId: spools.filamentLocalId,
+  s_remainingWeight: spools.remainingWeight,
+  s_initialWeight: spools.initialWeight,
+  s_spoolWeight: spools.spoolWeight,
+  s_usedWeight: spools.usedWeight,
+  s_comment: spools.comment,
+  s_archived: spools.archived,
+  s_displayName: spools.displayName,
+  s_qrCode: spools.qrCode,
+  s_nfcTagId: spools.nfcTagId,
+  s_lotNr: spools.lotNr,
+  s_lastUsed: spools.lastUsed,
+  s_firstUsed: spools.firstUsed,
+  s_registered: spools.registered,
+  s_isFavorite: spools.isFavorite,
+  s_lastModifiedAt: spools.lastModifiedAt,
+  f_localId: filaments.localId,
+  f_remoteId: filaments.remoteId,
+  f_name: filaments.name,
+  f_material: filaments.material,
+  f_colorHex: filaments.colorHex,
+  f_manufacturerLocalId: filaments.manufacturerLocalId,
+  f_weight: filaments.weight,
+  f_spoolWeight: filaments.spoolWeight,
+  f_printTempMin: filaments.printTempMin,
+  f_printTempMax: filaments.printTempMax,
+  f_density: filaments.density,
+  f_comment: filaments.comment,
+  f_lastModifiedAt: filaments.lastModifiedAt,
+  m_localId: manufacturers.localId,
+  m_remoteId: manufacturers.remoteId,
+  m_name: manufacturers.name,
+  m_website: manufacturers.website,
+  m_comment: manufacturers.comment,
+  m_lastModifiedAt: manufacturers.lastModifiedAt,
+  ss_remainingWeight: spoolStats.remainingWeight,
+} as const;
+
+type JoinRow = {
+  s_localId: string;
+  s_remoteId: number | null;
+  s_filamentLocalId: string | null;
+  s_remainingWeight: number | null;
+  s_initialWeight: number | null;
+  s_spoolWeight: number | null;
+  s_usedWeight: number | null;
+  s_comment: string | null;
+  s_archived: number;
+  s_displayName: string | null;
+  s_qrCode: string | null;
+  s_nfcTagId: string | null;
+  s_lotNr: string | null;
+  s_lastUsed: string | null;
+  s_firstUsed: string | null;
+  s_registered: string | null;
+  s_isFavorite: number;
+  s_lastModifiedAt: number;
+  f_localId: string | null;
+  f_remoteId: number | null;
+  f_name: string | null;
+  f_material: string | null;
+  f_colorHex: string | null;
+  f_manufacturerLocalId: string | null;
+  f_weight: number | null;
+  f_spoolWeight: number | null;
+  f_printTempMin: number | null;
+  f_printTempMax: number | null;
+  f_density: number | null;
+  f_comment: string | null;
+  f_lastModifiedAt: number | null;
+  m_localId: string | null;
+  m_remoteId: number | null;
+  m_name: string | null;
+  m_website: string | null;
+  m_comment: string | null;
+  m_lastModifiedAt: number | null;
+  ss_remainingWeight: number | null;
+};
+
+function buildJoinQuery() {
+  return getDb()
+    .select(JOIN_SELECT)
+    .from(spools)
+    .leftJoin(filaments, eq(spools.filamentLocalId, filaments.localId))
+    .leftJoin(manufacturers, eq(filaments.manufacturerLocalId, manufacturers.localId))
+    .leftJoin(spoolStats, eq(spools.localId, spoolStats.spoolLocalId));
+}
+
+function rowToSpoolView(row: JoinRow): SpoolView {
+  let manufacturer: Manufacturer | undefined;
+  if (row.m_localId) {
+    manufacturer = {
+      localId: row.m_localId,
+      remoteId: row.m_remoteId ?? undefined,
+      name: row.m_name!,
+      website: row.m_website ?? undefined,
+      comment: row.m_comment ?? undefined,
+      lastModifiedAt: row.m_lastModifiedAt!,
+    };
+  }
+
+  let filament: (Filament & { manufacturer?: Manufacturer }) | undefined;
+  if (row.f_localId) {
+    filament = {
+      localId: row.f_localId,
+      remoteId: row.f_remoteId ?? undefined,
+      name: row.f_name!,
+      material: row.f_material!,
+      colorHex: row.f_colorHex ?? undefined,
+      manufacturerLocalId: row.f_manufacturerLocalId ?? undefined,
+      weight: row.f_weight ?? undefined,
+      spoolWeight: row.f_spoolWeight ?? undefined,
+      printTempMin: row.f_printTempMin ?? undefined,
+      printTempMax: row.f_printTempMax ?? undefined,
+      density: row.f_density ?? undefined,
+      comment: row.f_comment ?? undefined,
+      lastModifiedAt: row.f_lastModifiedAt!,
+      manufacturer,
+    };
+  }
+
+  return {
+    localId: row.s_localId,
+    remoteId: row.s_remoteId ?? undefined,
+    filamentLocalId: row.s_filamentLocalId ?? undefined,
+    remainingWeight: row.ss_remainingWeight ?? row.s_remainingWeight ?? undefined,
+    initialWeight: row.s_initialWeight ?? undefined,
+    spoolWeight: row.s_spoolWeight ?? undefined,
+    usedWeight: row.s_usedWeight ?? undefined,
+    comment: row.s_comment ?? undefined,
+    archived: row.s_archived === 1,
+    displayName: row.s_displayName ?? undefined,
+    qrCode: row.s_qrCode ?? undefined,
+    nfcTagId: row.s_nfcTagId ?? undefined,
+    lotNr: row.s_lotNr ?? undefined,
+    lastUsed: row.s_lastUsed ?? undefined,
+    firstUsed: row.s_firstUsed ?? undefined,
+    registered: row.s_registered ?? undefined,
+    isFavorite: row.s_isFavorite === 1,
+    lastModifiedAt: row.s_lastModifiedAt,
+    filament,
+  };
+}
+
+// ─── Repository ───────────────────────────────────────────────────────────────
 
 export const SpoolRepository = {
   async getAll(): Promise<Spool[]> {
@@ -108,45 +279,48 @@ export const SpoolRepository = {
 
   /**
    * Returns all spools hydrated with filament/manufacturer data.
-   * remainingWeight is sourced from spool_stats (Phase 4 projection),
-   * falling back to spools.remaining_weight for pre-Phase-4 data.
+   * Phase 5: single LEFT JOIN query — O(1) queries instead of O(N).
+   * remainingWeight prefers spool_stats projection over spools.remaining_weight.
    */
   async getAllView(): Promise<SpoolView[]> {
-    const allSpools = await this.getAll();
-    if (allSpools.length === 0) return [];
+    const rows = await buildJoinQuery().orderBy(desc(spools.lastModifiedAt));
+    return rows.map(rowToSpoolView);
+  },
 
-    const localIds = allSpools.map((s) => s.localId);
-    const statsMap = await SpoolStatsRepository.getBatchRemainingWeights(localIds);
+  /**
+   * Paged version of getAllView.
+   * Phase 5: for 1000+ spool scale — load one page at a time.
+   * offset = page * pageSize, default order by lastModifiedAt DESC.
+   */
+  async getPagedView(
+    offset: number,
+    limit: number,
+    includeArchived = false
+  ): Promise<SpoolView[]> {
+    const rows = includeArchived
+      ? await buildJoinQuery()
+          .orderBy(desc(spools.lastModifiedAt))
+          .limit(limit)
+          .offset(offset)
+      : await buildJoinQuery()
+          .where(eq(spools.archived, 0))
+          .orderBy(desc(spools.lastModifiedAt))
+          .limit(limit)
+          .offset(offset);
+    return rows.map(rowToSpoolView);
+  },
 
-    const result: SpoolView[] = [];
-
-    for (const spool of allSpools) {
-      const projectedWeight = statsMap.get(spool.localId);
-      const view: SpoolView = {
-        ...spool,
-        remainingWeight: projectedWeight ?? spool.remainingWeight,
-      };
-
-      if (spool.filamentLocalId) {
-        const filament = await FilamentRepository.getByLocalId(
-          spool.filamentLocalId
-        );
-        if (filament) {
-          let manufacturer = undefined;
-          if (filament.manufacturerLocalId) {
-            manufacturer =
-              (await ManufacturerRepository.getByLocalId(
-                filament.manufacturerLocalId
-              )) ?? undefined;
-          }
-          view.filament = { ...filament, manufacturer };
-        }
-      }
-
-      result.push(view);
-    }
-
-    return result;
+  /**
+   * Count total spools. Used with getPagedView for pagination.
+   */
+  async countSpools(includeArchived = false): Promise<number> {
+    const rows = includeArchived
+      ? await getDb().select({ n: sql<number>`count(*)` }).from(spools)
+      : await getDb()
+          .select({ n: sql<number>`count(*)` })
+          .from(spools)
+          .where(eq(spools.archived, 0));
+    return Number(rows[0]?.n ?? 0);
   },
 
   async getByLocalId(localId: string): Promise<Spool | null> {
@@ -188,35 +362,60 @@ export const SpoolRepository = {
   },
 
   /**
-   * Returns a single spool hydrated with filament/manufacturer data.
-   * remainingWeight prefers spool_stats projection over spools column.
+   * Phase 5: batch pre-fetch sync records by remoteId.
+   * Returns Map<remoteId, SpoolSyncRecord> for O(1) lookup in SyncUseCase.
+   * Handles SQLite's 999-parameter limit via chunking.
    */
-  async getByLocalIdView(localId: string): Promise<SpoolView | null> {
-    const spool = await this.getByLocalId(localId);
-    if (!spool) return null;
-
-    const statsWeight = await SpoolStatsRepository.getRemainingWeight(localId);
-    const view: SpoolView = {
-      ...spool,
-      remainingWeight: statsWeight ?? spool.remainingWeight,
-    };
-
-    if (spool.filamentLocalId) {
-      const filament = await FilamentRepository.getByLocalId(
-        spool.filamentLocalId
-      );
-      if (filament) {
-        let manufacturer = undefined;
-        if (filament.manufacturerLocalId) {
-          manufacturer =
-            (await ManufacturerRepository.getByLocalId(
-              filament.manufacturerLocalId
-            )) ?? undefined;
+  async getMapByRemoteIds(
+    remoteIds: number[]
+  ): Promise<Map<number, SpoolSyncRecord>> {
+    if (remoteIds.length === 0) return new Map();
+    const result = new Map<number, SpoolSyncRecord>();
+    for (const ch of chunk(remoteIds, 900)) {
+      const rows = await getDb()
+        .select()
+        .from(spools)
+        .where(inArray(spools.remoteId, ch));
+      for (const row of rows) {
+        if (row.remoteId !== null && row.remoteId !== undefined) {
+          result.set(row.remoteId, toSpoolSyncRecord(row));
         }
-        view.filament = { ...filament, manufacturer };
       }
     }
-    return view;
+    return result;
+  },
+
+  /**
+   * Returns a single spool hydrated with filament/manufacturer data.
+   * Phase 5: single JOIN query — no separate lookups.
+   */
+  async getByLocalIdView(localId: string): Promise<SpoolView | null> {
+    const rows = await buildJoinQuery()
+      .where(eq(spools.localId, localId))
+      .limit(1);
+    return rows[0] ? rowToSpoolView(rows[0] as JoinRow) : null;
+  },
+
+  /**
+   * Phase 5: indexed lookup by qr_code column.
+   * Uses idx_spools_qr_code index for O(log n).
+   */
+  async findByQrCode(qr: string): Promise<SpoolView | null> {
+    const rows = await buildJoinQuery()
+      .where(eq(spools.qrCode, qr))
+      .limit(1);
+    return rows[0] ? rowToSpoolView(rows[0] as JoinRow) : null;
+  },
+
+  /**
+   * Phase 5: indexed lookup by nfc_tag_id column.
+   * Uses idx_spools_nfc_tag_id index for O(log n).
+   */
+  async findByNfcTagId(tagId: string): Promise<SpoolView | null> {
+    const rows = await buildJoinQuery()
+      .where(eq(spools.nfcTagId, tagId))
+      .limit(1);
+    return rows[0] ? rowToSpoolView(rows[0] as JoinRow) : null;
   },
 
   /**
@@ -235,9 +434,6 @@ export const SpoolRepository = {
    * Apply a remote update to an existing local spool.
    * Called by Application Layer ONLY when it has decided to accept_remote.
    * Does NOT check syncState — that decision belongs to the caller.
-   *
-   * Phase 4 note: writes spools.remaining_weight here as legacy/remote initial
-   * value. SyncUseCase also upserts spool_stats after calling this method.
    */
   async applyRemoteSpoolUpdate(
     localId: string,
@@ -314,9 +510,6 @@ export const SpoolRepository = {
   /**
    * Insert a spool received from remote that does not exist locally.
    * Assigns syncState = "synced" since the record is in sync with the server.
-   *
-   * Phase 4 note: writes spools.remaining_weight as the initial remote value.
-   * SyncUseCase upserts spool_stats after calling this method.
    */
   async insertSpoolFromRemote(data: {
     remoteId: number;
@@ -359,6 +552,62 @@ export const SpoolRepository = {
   },
 
   /**
+   * Phase 5: batch insert spools received from remote.
+   * Eliminates N individual insertSpoolFromRemote() calls in SyncUseCase.
+   * Returns array of {localId, remoteId, remainingWeight} for spool_stats seeding.
+   */
+  async insertManyFromRemote(
+    items: Array<{
+      remoteId: number;
+      filamentLocalId?: string;
+      remainingWeight?: number;
+      initialWeight?: number;
+      spoolWeight?: number;
+      usedWeight?: number;
+      comment?: string;
+      archived?: boolean;
+      lotNr?: string;
+      lastUsed?: string;
+      firstUsed?: string;
+      registered?: string;
+    }>
+  ): Promise<Array<{ localId: string; remoteId: number; remainingWeight?: number }>> {
+    if (items.length === 0) return [];
+    const now = Date.now();
+
+    const inserts: InsertSpool[] = items.map((data) => ({
+      localId: generateLocalId(),
+      remoteId: data.remoteId,
+      filamentLocalId: data.filamentLocalId ?? null,
+      remainingWeight: data.remainingWeight ?? null,
+      initialWeight: data.initialWeight ?? null,
+      spoolWeight: data.spoolWeight ?? null,
+      usedWeight: data.usedWeight ?? null,
+      comment: data.comment ?? null,
+      archived: data.archived ? 1 : 0,
+      lotNr: data.lotNr ?? null,
+      lastUsed: data.lastUsed ?? null,
+      firstUsed: data.firstUsed ?? null,
+      registered: data.registered ?? null,
+      isFavorite: 0,
+      syncState: "synced",
+      dirtyFields: null,
+      localVersion: 1,
+      lastModifiedAt: now,
+    }));
+
+    for (const ch of chunk(inserts, 50)) {
+      await getDb().insert(spools).values(ch);
+    }
+
+    return inserts.map((i) => ({
+      localId: i.localId,
+      remoteId: i.remoteId!,
+      remainingWeight: i.remainingWeight ?? undefined,
+    }));
+  },
+
+  /**
    * Explicitly set the sync state of a spool.
    * Called by Application Layer after conflict detection or resolution.
    */
@@ -387,8 +636,6 @@ export const SpoolRepository = {
    * Mark a spool as pending_push for weight synchronisation.
    * Does NOT touch spools.remaining_weight — that column is a legacy/init field.
    * The actual remaining weight lives in spool_stats (SpoolStatsRepository).
-   *
-   * Called by WeightUseCase after appending a UsageEvent and upserting spool_stats.
    */
   async markWeightPendingPush(localId: string, now: number): Promise<void> {
     const rows = await getDb()
@@ -411,9 +658,6 @@ export const SpoolRepository = {
 
   /**
    * @deprecated Phase 4: use WeightUseCase.adjustRemaining() instead.
-   * This method no longer writes spools.remaining_weight.
-   * It only updates sync state metadata so the push cycle knows to sync this spool.
-   * The actual weight is managed by SpoolStatsRepository + UsageEventRepository.
    */
   async updateRemainingWeight(
     localId: string,
@@ -422,8 +666,6 @@ export const SpoolRepository = {
     const now = Date.now();
     await this.markWeightPendingPush(localId, now);
 
-    // Return a spool with the requested remainingWeight for backward compat.
-    // The value will be reflected via spool_stats on the next getAllView() call.
     const spool = await this.getByLocalId(localId);
     if (!spool) return null;
     return { ...spool, remainingWeight, lastModifiedAt: now };

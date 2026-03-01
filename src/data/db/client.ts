@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import * as schema from "./schema";
 
 const DB_NAME = "filabro.db";
-const CURRENT_SCHEMA_VERSION = 4;
+const CURRENT_SCHEMA_VERSION = 5;
 
 /**
  * Versioned SQL migrations.
@@ -117,7 +117,6 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
   {
     version: 4,
     statements: [
-      // Usage events — append-only audit log
       `CREATE TABLE IF NOT EXISTS usage_events (
          id             TEXT PRIMARY KEY,
          spool_local_id TEXT NOT NULL,
@@ -129,19 +128,28 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
        )`,
       `CREATE INDEX IF NOT EXISTS usage_events_spool_time_idx ON usage_events(spool_local_id, occurred_at)`,
       `CREATE INDEX IF NOT EXISTS usage_events_spool_idx ON usage_events(spool_local_id)`,
-      // Spool stats — projection / read model
       `CREATE TABLE IF NOT EXISTS spool_stats (
          spool_local_id   TEXT PRIMARY KEY,
          remaining_weight INTEGER,
          updated_at       INTEGER NOT NULL
        )`,
       `CREATE INDEX IF NOT EXISTS spool_stats_updated_idx ON spool_stats(updated_at)`,
-      // Seed spool_stats from existing spools.remaining_weight so pre-Phase-4
-      // data is immediately queryable without waiting for the first usage event.
       `INSERT OR IGNORE INTO spool_stats (spool_local_id, remaining_weight, updated_at)
        SELECT local_id, CAST(remaining_weight AS INTEGER), last_modified_at
        FROM spools
        WHERE remaining_weight IS NOT NULL`,
+    ],
+  },
+  {
+    version: 5,
+    statements: [
+      // Phase 5: additional indexes for 1000+ spool scale
+      `CREATE INDEX IF NOT EXISTS idx_spools_archived ON spools(archived)`,
+      `CREATE INDEX IF NOT EXISTS idx_spools_filament_local_id ON spools(filament_local_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_spools_qr_code ON spools(qr_code)`,
+      `CREATE INDEX IF NOT EXISTS idx_spools_nfc_tag_id ON spools(nfc_tag_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_spools_last_modified_at ON spools(last_modified_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_filaments_manufacturer_local_id ON filaments(manufacturer_local_id)`,
     ],
   },
 ];
@@ -195,7 +203,6 @@ export function initDatabase(): void {
 
   const sqlite = getSqliteDb();
 
-  // Ensure schema_version table exists before anything else
   sqlite.execSync(
     `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`
   );
@@ -214,7 +221,6 @@ export function initDatabase(): void {
 
     sqlite.withTransactionSync(() => {
       for (const stmt of migration.statements) {
-        // Skip schema_version bootstrap statements (already run above)
         if (
           stmt.includes("CREATE TABLE IF NOT EXISTS schema_version") ||
           stmt.includes("INSERT INTO schema_version")

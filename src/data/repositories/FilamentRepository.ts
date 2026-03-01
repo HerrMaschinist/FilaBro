@@ -1,10 +1,18 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { filaments, InsertFilament } from "../db/schema";
 import type { Filament } from "../../domain/models";
 
 function generateLocalId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
 }
 
 /**
@@ -89,6 +97,33 @@ export const FilamentRepository = {
     return { localId: rows[0].localId, syncState: rows[0].syncState };
   },
 
+  /**
+   * Phase 5: batch pre-fetch sync records by remoteId.
+   * Returns Map<remoteId, {localId, syncState}> for O(1) lookup in SyncUseCase.
+   */
+  async getMapByRemoteIds(
+    remoteIds: number[]
+  ): Promise<Map<number, { localId: string; syncState: string }>> {
+    if (remoteIds.length === 0) return new Map();
+    const result = new Map<number, { localId: string; syncState: string }>();
+    for (const ch of chunk(remoteIds, 900)) {
+      const rows = await getDb()
+        .select({
+          localId: filaments.localId,
+          remoteId: filaments.remoteId,
+          syncState: filaments.syncState,
+        })
+        .from(filaments)
+        .where(inArray(filaments.remoteId, ch));
+      for (const row of rows) {
+        if (row.remoteId !== null && row.remoteId !== undefined) {
+          result.set(row.remoteId, { localId: row.localId, syncState: row.syncState });
+        }
+      }
+    }
+    return result;
+  },
+
   async createLocal(data: {
     name: string;
     material: string;
@@ -128,7 +163,6 @@ export const FilamentRepository = {
       comment?: string;
     }
   ): Promise<Filament | null> {
-    // Query raw row to access syncState (not on domain Filament)
     const rows = await getDb()
       .select()
       .from(filaments)
@@ -206,7 +240,6 @@ export const FilamentRepository = {
     const existing = await this.getByRemoteId(data.remoteId);
 
     if (existing) {
-      // DB payload uses null to clear optional fields in SQLite
       await getDb()
         .update(filaments)
         .set({
@@ -222,7 +255,6 @@ export const FilamentRepository = {
         })
         .where(eq(filaments.localId, existing.localId));
 
-      // Domain return uses undefined (no null in domain types)
       return {
         localId: existing.localId,
         remoteId: data.remoteId,
@@ -256,6 +288,81 @@ export const FilamentRepository = {
     };
     await getDb().insert(filaments).values(insert);
     return toFilament(insert as typeof filaments.$inferSelect);
+  },
+
+  /**
+   * Phase 5: batch upsert filaments from remote.
+   * Items with localId → UPDATE (existing records).
+   * Items without localId → INSERT (new records, batch insert).
+   * Replaces N individual upsertFromRemote() calls in SyncUseCase.
+   */
+  async upsertManyFromRemote(
+    items: Array<{
+      localId?: string;
+      remoteId: number;
+      name: string;
+      material: string;
+      colorHex?: string;
+      manufacturerLocalId?: string;
+      weight?: number;
+      spoolWeight?: number;
+      comment?: string;
+    }>
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const now = Date.now();
+
+    const toInsert = items.filter((i) => !i.localId);
+    const toUpdate = items.filter((i) => !!i.localId) as Array<{
+      localId: string;
+      remoteId: number;
+      name: string;
+      material: string;
+      colorHex?: string;
+      manufacturerLocalId?: string;
+      weight?: number;
+      spoolWeight?: number;
+      comment?: string;
+    }>;
+
+    if (toInsert.length > 0) {
+      for (const ch of chunk(toInsert, 50)) {
+        await getDb()
+          .insert(filaments)
+          .values(
+            ch.map((i) => ({
+              localId: generateLocalId(),
+              remoteId: i.remoteId,
+              name: i.name,
+              material: i.material,
+              colorHex: i.colorHex ?? null,
+              manufacturerLocalId: i.manufacturerLocalId ?? null,
+              weight: i.weight ?? null,
+              spoolWeight: i.spoolWeight ?? null,
+              comment: i.comment ?? null,
+              syncState: "synced",
+              lastModifiedAt: now,
+            }))
+          );
+      }
+    }
+
+    for (const item of toUpdate) {
+      await getDb()
+        .update(filaments)
+        .set({
+          name: item.name,
+          material: item.material,
+          colorHex: item.colorHex ?? null,
+          manufacturerLocalId: item.manufacturerLocalId ?? null,
+          weight: item.weight ?? null,
+          spoolWeight: item.spoolWeight ?? null,
+          comment: item.comment ?? null,
+          syncState: "synced",
+          lastModifiedAt: now,
+        })
+        .where(eq(filaments.localId, item.localId));
+    }
   },
 
   async deleteAll(): Promise<void> {

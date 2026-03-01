@@ -1,10 +1,18 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { manufacturers, InsertManufacturer } from "../db/schema";
 import type { Manufacturer } from "../../domain/models";
 
 function generateLocalId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
 }
 
 /**
@@ -77,6 +85,33 @@ export const ManufacturerRepository = {
     return { localId: rows[0].localId, syncState: rows[0].syncState };
   },
 
+  /**
+   * Phase 5: batch pre-fetch sync records by remoteId.
+   * Returns Map<remoteId, {localId, syncState}> for O(1) lookup in SyncUseCase.
+   */
+  async getMapByRemoteIds(
+    remoteIds: number[]
+  ): Promise<Map<number, { localId: string; syncState: string }>> {
+    if (remoteIds.length === 0) return new Map();
+    const result = new Map<number, { localId: string; syncState: string }>();
+    for (const ch of chunk(remoteIds, 900)) {
+      const rows = await getDb()
+        .select({
+          localId: manufacturers.localId,
+          remoteId: manufacturers.remoteId,
+          syncState: manufacturers.syncState,
+        })
+        .from(manufacturers)
+        .where(inArray(manufacturers.remoteId, ch));
+      for (const row of rows) {
+        if (row.remoteId !== null && row.remoteId !== undefined) {
+          result.set(row.remoteId, { localId: row.localId, syncState: row.syncState });
+        }
+      }
+    }
+    return result;
+  },
+
   async createLocal(data: {
     name: string;
     website?: string;
@@ -104,7 +139,6 @@ export const ManufacturerRepository = {
       comment?: string;
     }
   ): Promise<Manufacturer | null> {
-    // Query raw row to access syncState (not on domain Manufacturer)
     const rows = await getDb()
       .select()
       .from(manufacturers)
@@ -196,6 +230,65 @@ export const ManufacturerRepository = {
     };
     await getDb().insert(manufacturers).values(insert);
     return toManufacturer(insert as typeof manufacturers.$inferSelect);
+  },
+
+  /**
+   * Phase 5: batch upsert manufacturers from remote.
+   * Items with localId → UPDATE (existing records).
+   * Items without localId → INSERT (new records, batch insert).
+   * Replaces N individual upsertFromRemote() calls in SyncUseCase.
+   */
+  async upsertManyFromRemote(
+    items: Array<{
+      localId?: string;
+      remoteId: number;
+      name: string;
+      website?: string;
+      comment?: string;
+    }>
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const now = Date.now();
+
+    const toInsert = items.filter((i) => !i.localId);
+    const toUpdate = items.filter((i) => !!i.localId) as Array<{
+      localId: string;
+      remoteId: number;
+      name: string;
+      website?: string;
+      comment?: string;
+    }>;
+
+    if (toInsert.length > 0) {
+      for (const ch of chunk(toInsert, 50)) {
+        await getDb()
+          .insert(manufacturers)
+          .values(
+            ch.map((i) => ({
+              localId: generateLocalId(),
+              remoteId: i.remoteId,
+              name: i.name,
+              website: i.website ?? null,
+              comment: i.comment ?? null,
+              syncState: "synced",
+              lastModifiedAt: now,
+            }))
+          );
+      }
+    }
+
+    for (const item of toUpdate) {
+      await getDb()
+        .update(manufacturers)
+        .set({
+          name: item.name,
+          website: item.website ?? null,
+          comment: item.comment ?? null,
+          syncState: "synced",
+          lastModifiedAt: now,
+        })
+        .where(eq(manufacturers.localId, item.localId));
+    }
   },
 
   async deleteAll(): Promise<void> {

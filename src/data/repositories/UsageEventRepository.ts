@@ -4,6 +4,9 @@
  * Append-only event store for filament usage events.
  * Implements IUsageEventRepository from core/ports.
  *
+ * Phase 5 addition:
+ *   - appendMany() — batch insert for sync operations.
+ *
  * Rules:
  *   - Never updates or deletes events — only inserts.
  *   - grams is stored as INTEGER (rounded).
@@ -14,6 +17,14 @@ import { getDb } from "../db/client";
 import { usageEvents } from "../db/schema";
 import type { UsageEvent } from "../../core/domain/usage";
 import type { IUsageEventRepository } from "../../core/ports";
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
 
 function toUsageEvent(row: typeof usageEvents.$inferSelect): UsageEvent {
   return {
@@ -40,6 +51,29 @@ export const UsageEventRepository: IUsageEventRepository = {
         source: event.source,
         note: event.note ?? null,
       });
+  },
+
+  /**
+   * Phase 5: batch append events — used for sync pull of new spools.
+   * Chunked to stay within SQLite's parameter limit.
+   */
+  async appendMany(events: UsageEvent[]): Promise<void> {
+    if (events.length === 0) return;
+    for (const ch of chunk(events, 50)) {
+      await getDb()
+        .insert(usageEvents)
+        .values(
+          ch.map((event) => ({
+            id: event.id,
+            spoolLocalId: event.spoolLocalId,
+            grams: Math.round(event.grams),
+            type: event.type,
+            occurredAt: event.occurredAt,
+            source: event.source,
+            note: event.note ?? null,
+          }))
+        );
+    }
   },
 
   async listBySpool(spoolLocalId: string): Promise<UsageEvent[]> {

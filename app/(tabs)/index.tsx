@@ -51,6 +51,9 @@ export default function SpoolsScreen() {
     lastSync,
     syncPending,
     serverUrl,
+    hasMoreSpools,
+    isLoadingMoreSpools,
+    loadNextPage,
   } = useApp();
 
   const [search, setSearch] = useState("");
@@ -394,6 +397,20 @@ export default function SpoolsScreen() {
             tintColor={colors.accent}
             colors={[colors.accent]}
           />
+        }
+        onEndReached={
+          hasMoreSpools && !isLoadingMoreSpools && !search.trim()
+            ? loadNextPage
+            : undefined
+        }
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          isLoadingMoreSpools ? (
+            <ActivityIndicator
+              color={colors.accent}
+              style={{ marginVertical: 16 }}
+            />
+          ) : null
         }
         ListEmptyComponent={null}
         showsVerticalScrollIndicator={false}

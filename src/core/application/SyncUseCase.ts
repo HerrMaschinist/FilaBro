@@ -18,6 +18,15 @@
  *   - When accept_remote for a spool: upsert spool_stats with remote remainingWeight
  *     and append an adjustment UsageEvent with source="sync" for the audit trail.
  *   - When inserting a new remote spool: seed spool_stats with remote remainingWeight.
+ *
+ * Phase 5 optimizations (batch-first sync):
+ *   - Pre-fetch all manufacturer/filament/spool records in bulk before the per-entity loop.
+ *   - O(1) map lookups instead of O(N) individual SELECT queries.
+ *   - Batch INSERT new spools via insertManyFromRemote().
+ *   - Batch upsert new spool_stats via upsertManyRemainingWeights().
+ *   - isSpoolRemoteIdentical() now accepts SpoolSyncRecord — avoids second getByLocalId().
+ *   - Batch upsert manufacturers and filaments via upsertManyFromRemote().
+ *   - Total queries: O(6) for the pull instead of O(5N).
  */
 import * as SyncService from "@/src/data/sync/SyncService";
 import { updateSyncMeta } from "@/src/data/sync/SyncService";
@@ -26,6 +35,7 @@ import type { SyncResult } from "@/src/core/ports/index";
 import { ManufacturerRepository } from "@/src/data/repositories/ManufacturerRepository";
 import { FilamentRepository } from "@/src/data/repositories/FilamentRepository";
 import { SpoolRepository } from "@/src/data/repositories/SpoolRepository";
+import type { SpoolSyncRecord } from "@/src/data/repositories/SpoolRepository";
 import { SpoolStatsRepository } from "@/src/data/repositories/SpoolStatsRepository";
 import { UsageEventRepository } from "@/src/data/repositories/UsageEventRepository";
 import { ConflictSnapshotRepository } from "@/src/data/repositories/ConflictSnapshotRepository";
@@ -47,10 +57,13 @@ function generateId(): string {
  * to local stored values. When remote is identical, we skip the update
  * entirely — no conflict flag, no write, no version bump.
  *
+ * Phase 5: accepts SpoolSyncRecord instead of Spool — no need for a second
+ * getByLocalId() call since SpoolSyncRecord now includes all identity fields.
+ *
  * Only checks fields that Spoolman owns (never isFavorite, displayName, etc.)
  */
 function isSpoolRemoteIdentical(
-  local: import("@/src/domain/models").Spool,
+  local: SpoolSyncRecord,
   remote: {
     filamentLocalId?: string;
     remainingWeight?: number;
@@ -85,6 +98,9 @@ function isSpoolRemoteIdentical(
 /**
  * Full conflict-aware pull from Spoolman.
  * Processes manufacturers → filaments → spools (in dependency order).
+ *
+ * Phase 5: Uses batch pre-fetch + batch upsert for each entity type.
+ * Reduces total DB queries from O(5N) to O(6) for a full sync.
  */
 async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
   const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, errors: [] };
@@ -93,9 +109,21 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
 
   log(`pull() started — server: ${baseUrl}`);
 
+  // ── 1. Manufacturers ──────────────────────────────────────────────────────
   try {
-    // ── 1. Manufacturers ──────────────────────────────────────────────────────
     const remoteVendors = await SpoolmanClient.getVendors(baseUrl);
+
+    // Phase 5: batch fetch all existing by remoteId → O(1) map lookup below
+    const vendorRemoteIds = remoteVendors.map((v) => v.id);
+    const existingMfrMap = await ManufacturerRepository.getMapByRemoteIds(vendorRemoteIds);
+
+    const toUpsert: Array<{
+      localId?: string;
+      remoteId: number;
+      name: string;
+      website?: string;
+      comment?: string;
+    }> = [];
 
     for (const vendor of remoteVendors) {
       const remoteSnapshot: Record<string, unknown> = {
@@ -104,56 +132,77 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
         comment: vendor.comment,
       };
 
-      const record = await ManufacturerRepository.getRecordByRemoteId(vendor.id);
+      const existing = existingMfrMap.get(vendor.id);
 
-      if (!record) {
-        await ManufacturerRepository.upsertFromRemote({
-          remoteId: vendor.id,
-          name: vendor.name,
-          comment: vendor.comment,
-        });
+      if (!existing) {
+        toUpsert.push({ remoteId: vendor.id, name: vendor.name, comment: vendor.comment });
       } else {
-        const resolution = resolver.resolve(record.syncState, 0, remoteSnapshot);
+        const resolution = resolver.resolve(existing.syncState, 0, remoteSnapshot);
         if (resolution === "accept_remote") {
-          await ManufacturerRepository.upsertFromRemote({
+          toUpsert.push({
+            localId: existing.localId,
             remoteId: vendor.id,
             name: vendor.name,
             comment: vendor.comment,
           });
         } else {
-          // flag_conflict — preserve local, store snapshot
           await ConflictSnapshotRepository.upsertOpen(
             "manufacturer",
-            record.localId,
+            existing.localId,
             JSON.stringify(remoteSnapshot),
             now
           );
-          await ManufacturerRepository.setSyncState(record.localId, "conflict");
+          await ManufacturerRepository.setSyncState(existing.localId, "conflict");
           result.conflicts++;
-          log(`  CONFLICT manufacturer localId=${record.localId}`);
+          log(`  CONFLICT manufacturer localId=${existing.localId}`);
         }
       }
     }
 
+    // Phase 5: batch upsert — one INSERT for new, N individual UPDATEs for existing
+    await ManufacturerRepository.upsertManyFromRemote(toUpsert);
     await updateSyncMeta("manufacturer", "lastPullAt", baseUrl);
-    log(`  manufacturers: ${remoteVendors.length} processed`);
+    log(`  manufacturers: ${remoteVendors.length} processed (batch)`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`  manufacturers error: ${msg}`);
     result.errors.push(`manufacturers: ${msg}`);
-    // Continue with filaments and spools even if manufacturers fail
   }
 
+  // ── 2. Filaments ──────────────────────────────────────────────────────────
   try {
-    // ── 2. Filaments ──────────────────────────────────────────────────────────
     const remoteFilaments = await SpoolmanClient.getFilaments(baseUrl);
 
+    // Phase 5: batch pre-fetch manufacturer localIds for O(1) resolution
+    const vendorRemoteIds = [
+      ...new Set(
+        remoteFilaments
+          .filter((f) => f.vendor != null)
+          .map((f) => f.vendor!.id)
+      ),
+    ];
+    const mfrRemoteIdMap = await ManufacturerRepository.getMapByRemoteIds(vendorRemoteIds);
+
+    // Phase 5: batch pre-fetch filament records
+    const filamentRemoteIds = remoteFilaments.map((f) => f.id);
+    const existingFilMap = await FilamentRepository.getMapByRemoteIds(filamentRemoteIds);
+
+    const toUpsert: Array<{
+      localId?: string;
+      remoteId: number;
+      name: string;
+      material: string;
+      colorHex?: string;
+      manufacturerLocalId?: string;
+      weight?: number;
+      spoolWeight?: number;
+      comment?: string;
+    }> = [];
+
     for (const rf of remoteFilaments) {
-      let manufacturerLocalId: string | undefined;
-      if (rf.vendor) {
-        const mfr = await ManufacturerRepository.getByRemoteId(rf.vendor.id);
-        manufacturerLocalId = mfr?.localId;
-      }
+      const manufacturerLocalId = rf.vendor
+        ? mfrRemoteIdMap.get(rf.vendor.id)?.localId
+        : undefined;
 
       const remoteSnapshot: Record<string, unknown> = {
         id: rf.id,
@@ -166,10 +215,10 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
         comment: rf.comment,
       };
 
-      const record = await FilamentRepository.getRecordByRemoteId(rf.id);
+      const existing = existingFilMap.get(rf.id);
 
-      if (!record) {
-        await FilamentRepository.upsertFromRemote({
+      if (!existing) {
+        toUpsert.push({
           remoteId: rf.id,
           name: rf.name,
           material: rf.material,
@@ -180,9 +229,10 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
           comment: rf.comment,
         });
       } else {
-        const resolution = resolver.resolve(record.syncState, 0, remoteSnapshot);
+        const resolution = resolver.resolve(existing.syncState, 0, remoteSnapshot);
         if (resolution === "accept_remote") {
-          await FilamentRepository.upsertFromRemote({
+          toUpsert.push({
+            localId: existing.localId,
             remoteId: rf.id,
             name: rf.name,
             material: rf.material,
@@ -195,36 +245,65 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
         } else {
           await ConflictSnapshotRepository.upsertOpen(
             "filament",
-            record.localId,
+            existing.localId,
             JSON.stringify(remoteSnapshot),
             now
           );
-          await FilamentRepository.setSyncState(record.localId, "conflict");
+          await FilamentRepository.setSyncState(existing.localId, "conflict");
           result.conflicts++;
-          log(`  CONFLICT filament localId=${record.localId}`);
+          log(`  CONFLICT filament localId=${existing.localId}`);
         }
       }
     }
 
+    // Phase 5: batch upsert filaments
+    await FilamentRepository.upsertManyFromRemote(toUpsert);
     await updateSyncMeta("filament", "lastPullAt", baseUrl);
-    log(`  filaments: ${remoteFilaments.length} processed`);
+    log(`  filaments: ${remoteFilaments.length} processed (batch)`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`  filaments error: ${msg}`);
     result.errors.push(`filaments: ${msg}`);
   }
 
+  // ── 3. Spools ─────────────────────────────────────────────────────────────
   try {
-    // ── 3. Spools ─────────────────────────────────────────────────────────────
     const remoteSpools = await SpoolmanClient.getSpools(baseUrl);
 
+    // Phase 5: batch pre-fetch filament localIds for O(1) resolution
+    const allFilamentRemoteIds = [
+      ...new Set(
+        remoteSpools
+          .filter((s) => s.filament != null)
+          .map((s) => s.filament!.id)
+      ),
+    ];
+    const filRemoteIdMap = await FilamentRepository.getMapByRemoteIds(allFilamentRemoteIds);
+
+    // Phase 5: batch pre-fetch all existing spool sync records
+    const spoolRemoteIds = remoteSpools.map((s) => s.id);
+    const existingSpoolMap = await SpoolRepository.getMapByRemoteIds(spoolRemoteIds);
+
+    // Partition into new (batch insert) and existing (per-entity conflict check)
+    const newSpoolItems: Array<{
+      remoteId: number;
+      filamentLocalId?: string;
+      remainingWeight?: number;
+      initialWeight?: number;
+      spoolWeight?: number;
+      usedWeight?: number;
+      comment?: string;
+      archived?: boolean;
+      lotNr?: string;
+      lastUsed?: string;
+      firstUsed?: string;
+      registered?: string;
+    }> = [];
+
     for (const rs of remoteSpools) {
-      // Resolve filamentLocalId from the embedded filament's remoteId
-      let filamentLocalId: string | undefined;
-      if (rs.filament) {
-        const localFilament = await FilamentRepository.getByRemoteId(rs.filament.id);
-        filamentLocalId = localFilament?.localId;
-      }
+      const filamentLocalId = rs.filament
+        ? filRemoteIdMap.get(rs.filament.id)?.localId
+        : undefined;
 
       const remoteData = {
         remoteId: rs.id,
@@ -241,50 +320,21 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
         registered: rs.registered,
       };
 
-      const record = await SpoolRepository.getRecordByRemoteId(rs.id);
+      const record = existingSpoolMap.get(rs.id);
 
       if (!record) {
-        // New entity — no local record, safe to insert
-        const inserted = await SpoolRepository.insertSpoolFromRemote(remoteData);
-
-        // Phase 4: seed spool_stats with remote remaining weight (audit trail: sync event)
-        if (remoteData.remainingWeight !== undefined) {
-          await SpoolStatsRepository.upsertRemainingWeight(
-            inserted.localId,
-            remoteData.remainingWeight,
-            now
-          );
-          await UsageEventRepository.append({
-            id: generateId(),
-            spoolLocalId: inserted.localId,
-            grams: Math.round(remoteData.remainingWeight),
-            type: "adjustment",
-            occurredAt: now,
-            source: "sync",
-            note: `Initial sync from Spoolman (remoteId=${rs.id})`,
-          });
-        }
-
-        result.pulled++;
-        log(`  INSERT spool remoteId=${rs.id}`);
+        newSpoolItems.push(remoteData);
         continue;
       }
 
-      // Existing entity — apply conflict policy
-      const localSpool = await SpoolRepository.getByLocalId(record.localId);
-
-      // If remote is identical to local, no update needed regardless of sync state
-      if (localSpool && isSpoolRemoteIdentical(localSpool, remoteData)) {
+      // Phase 5: isSpoolRemoteIdentical now uses SpoolSyncRecord — no extra getByLocalId()
+      if (isSpoolRemoteIdentical(record, remoteData)) {
         log(`  SKIP spool remoteId=${rs.id} — remote identical to local`);
         result.pulled++;
         continue;
       }
 
-      const remoteSnapshot: Record<string, unknown> = {
-        ...remoteData,
-        capturedAt: now,
-      };
-
+      const remoteSnapshot: Record<string, unknown> = { ...remoteData, capturedAt: now };
       const resolution = resolver.resolve(
         record.syncState,
         record.localVersion,
@@ -294,7 +344,6 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
       if (resolution === "accept_remote") {
         await SpoolRepository.applyRemoteSpoolUpdate(record.localId, remoteData);
 
-        // Phase 4: update spool_stats with remote remaining weight + add audit event
         if (remoteData.remainingWeight !== undefined) {
           await SpoolStatsRepository.upsertRemainingWeight(
             record.localId,
@@ -315,7 +364,6 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
         result.pulled++;
         log(`  ACCEPT spool remoteId=${rs.id}`);
       } else {
-        // flag_conflict — preserve local data, store snapshot for Application Layer decision
         await ConflictSnapshotRepository.upsertOpen(
           "spool",
           record.localId,
@@ -328,8 +376,44 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
       }
     }
 
+    // Phase 5: batch insert all new spools in one round-trip
+    if (newSpoolItems.length > 0) {
+      const inserted = await SpoolRepository.insertManyFromRemote(newSpoolItems);
+
+      // Phase 5: batch seed spool_stats for all new spools
+      const statsItems = inserted
+        .filter((i) => i.remainingWeight !== undefined)
+        .map((i) => ({
+          spoolLocalId: i.localId,
+          remainingWeight: i.remainingWeight!,
+          updatedAt: now,
+        }));
+
+      if (statsItems.length > 0) {
+        await SpoolStatsRepository.upsertManyRemainingWeights(statsItems);
+      }
+
+      // Append initial sync usage events (audit trail)
+      for (const ins of inserted) {
+        if (ins.remainingWeight !== undefined) {
+          await UsageEventRepository.append({
+            id: generateId(),
+            spoolLocalId: ins.localId,
+            grams: Math.round(ins.remainingWeight),
+            type: "adjustment",
+            occurredAt: now,
+            source: "sync",
+            note: `Initial sync from Spoolman (remoteId=${ins.remoteId})`,
+          });
+        }
+      }
+
+      result.pulled += inserted.length;
+      log(`  INSERT ${inserted.length} new spools (batch)`);
+    }
+
     await updateSyncMeta("spool", "lastPullAt", baseUrl);
-    log(`  spools: ${remoteSpools.length} processed, ${result.conflicts} conflicts`);
+    log(`  spools: ${remoteSpools.length} processed (batch), ${result.conflicts} conflicts`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`  spools error: ${msg}`);
@@ -380,6 +464,7 @@ export const SyncUseCase = {
 
   /**
    * Load all spools from local DB as SpoolView. No network call.
+   * Phase 5: backed by JOIN query — O(1) DB queries.
    */
   async getLocalSpools(): Promise<SpoolView[]> {
     return SyncService.getLocalSpools();

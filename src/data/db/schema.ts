@@ -37,38 +37,48 @@ export const filaments = sqliteTable("filaments", {
   lastModifiedAt: integer("last_modified_at").notNull(),
 });
 
-export const spools = sqliteTable("spools", {
-  localId: text("local_id").primaryKey(),
-  remoteId: integer("remote_id"),
-  filamentLocalId: text("filament_local_id"),
-  /**
-   * Legacy column — initial or remote-sourced value.
-   * Phase 4 source of truth for remaining weight is spool_stats.remaining_weight.
-   * Do NOT write to this column for user-initiated weight changes.
-   */
-  remainingWeight: real("remaining_weight"),
-  initialWeight: real("initial_weight"),
-  spoolWeight: real("spool_weight"),
-  usedWeight: real("used_weight"),
-  comment: text("comment"),
-  /** 0 = false, 1 = true */
-  archived: integer("archived").notNull().default(0),
-  displayName: text("display_name"),
-  qrCode: text("qr_code"),
-  nfcTagId: text("nfc_tag_id"),
-  lotNr: text("lot_nr"),
-  lastUsed: text("last_used"),
-  firstUsed: text("first_used"),
-  registered: text("registered"),
-  /** Local-only, never synced to Spoolman */
-  isFavorite: integer("is_favorite").notNull().default(0),
-  syncState: text("sync_state").notNull().default("synced"),
-  /** JSON string: string[] of dirty field names */
-  dirtyFields: text("dirty_fields"),
-  localVersion: integer("local_version").notNull().default(1),
-  remoteVersion: integer("remote_version"),
-  lastModifiedAt: integer("last_modified_at").notNull(),
-});
+export const spools = sqliteTable(
+  "spools",
+  {
+    localId: text("local_id").primaryKey(),
+    remoteId: integer("remote_id"),
+    filamentLocalId: text("filament_local_id"),
+    /**
+     * Legacy column — initial or remote-sourced value.
+     * Phase 4 source of truth for remaining weight is spool_stats.remaining_weight.
+     * Do NOT write to this column for user-initiated weight changes.
+     */
+    remainingWeight: real("remaining_weight"),
+    initialWeight: real("initial_weight"),
+    spoolWeight: real("spool_weight"),
+    usedWeight: real("used_weight"),
+    comment: text("comment"),
+    /** 0 = false, 1 = true */
+    archived: integer("archived").notNull().default(0),
+    displayName: text("display_name"),
+    qrCode: text("qr_code"),
+    nfcTagId: text("nfc_tag_id"),
+    lotNr: text("lot_nr"),
+    lastUsed: text("last_used"),
+    firstUsed: text("first_used"),
+    registered: text("registered"),
+    /** Local-only, never synced to Spoolman */
+    isFavorite: integer("is_favorite").notNull().default(0),
+    syncState: text("sync_state").notNull().default("synced"),
+    /** JSON string: string[] of dirty field names */
+    dirtyFields: text("dirty_fields"),
+    localVersion: integer("local_version").notNull().default(1),
+    remoteVersion: integer("remote_version"),
+    lastModifiedAt: integer("last_modified_at").notNull(),
+  },
+  (t) => ({
+    archivedIdx: index("idx_spools_archived").on(t.archived),
+    filamentLocalIdIdx: index("idx_spools_filament_local_id").on(t.filamentLocalId),
+    qrCodeIdx: index("idx_spools_qr_code").on(t.qrCode),
+    nfcTagIdIdx: index("idx_spools_nfc_tag_id").on(t.nfcTagId),
+    lastModifiedAtIdx: index("idx_spools_last_modified_at").on(t.lastModifiedAt),
+  })
+);
 
 export const syncMeta = sqliteTable("sync_meta", {
   entityType: text("entity_type").primaryKey(),

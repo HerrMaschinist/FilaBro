@@ -51,10 +51,19 @@ export interface UpsertSpoolFromRemoteInput {
 
 export interface ISpoolRepository {
   getAll(): Promise<Spool[]>;
+  /** JOIN-based — no N+1. Loads all spools with filament/manufacturer hydrated. */
   getAllView(): Promise<SpoolView[]>;
+  /** Paged JOIN-based view. offset = page * pageSize. */
+  getPagedView(offset: number, limit: number, includeArchived?: boolean): Promise<SpoolView[]>;
+  /** Total count of spools — used with getPagedView for pagination. */
+  countSpools(includeArchived?: boolean): Promise<number>;
   getByLocalId(localId: string): Promise<Spool | null>;
   getByLocalIdView(localId: string): Promise<SpoolView | null>;
   getByRemoteId(remoteId: number): Promise<Spool | null>;
+  /** Indexed lookup by qr_code column. */
+  findByQrCode(qr: string): Promise<SpoolView | null>;
+  /** Indexed lookup by nfc_tag_id column. */
+  findByNfcTagId(tagId: string): Promise<SpoolView | null>;
   createLocal(data: CreateSpoolInput): Promise<Spool>;
   upsertFromRemote(data: UpsertSpoolFromRemoteInput): Promise<Spool>;
   setFavorite(localId: string, isFavorite: boolean): Promise<void>;
@@ -86,12 +95,21 @@ export interface UpsertFilamentFromRemoteInput {
   comment?: string;
 }
 
+export interface BatchUpsertFilamentInput extends UpsertFilamentFromRemoteInput {
+  /** Present for existing records (UPDATE path); absent for new records (INSERT path). */
+  localId?: string;
+}
+
 export interface IFilamentRepository {
   getAll(): Promise<Filament[]>;
   getByLocalId(localId: string): Promise<Filament | null>;
   getByRemoteId(remoteId: number): Promise<Filament | null>;
+  /** Batch fetch: Map<remoteId, {localId, syncState}>. One query for all ids. */
+  getMapByRemoteIds(remoteIds: number[]): Promise<Map<number, { localId: string; syncState: string }>>;
   createLocal(data: CreateFilamentInput): Promise<Filament>;
   upsertFromRemote(data: UpsertFilamentFromRemoteInput): Promise<Filament>;
+  /** Batch upsert: items with localId → UPDATE; items without → INSERT. One round-trip. */
+  upsertManyFromRemote(items: BatchUpsertFilamentInput[]): Promise<void>;
   deleteByLocalId(localId: string): Promise<boolean>;
   deleteAll(): Promise<void>;
 }
@@ -111,12 +129,21 @@ export interface UpsertManufacturerFromRemoteInput {
   comment?: string;
 }
 
+export interface BatchUpsertManufacturerInput extends UpsertManufacturerFromRemoteInput {
+  /** Present for existing records (UPDATE path); absent for new records (INSERT path). */
+  localId?: string;
+}
+
 export interface IManufacturerRepository {
   getAll(): Promise<Manufacturer[]>;
   getByLocalId(localId: string): Promise<Manufacturer | null>;
   getByRemoteId(remoteId: number): Promise<Manufacturer | null>;
+  /** Batch fetch: Map<remoteId, {localId, syncState}>. One query for all ids. */
+  getMapByRemoteIds(remoteIds: number[]): Promise<Map<number, { localId: string; syncState: string }>>;
   createLocal(data: CreateManufacturerInput): Promise<Manufacturer>;
   upsertFromRemote(data: UpsertManufacturerFromRemoteInput): Promise<Manufacturer>;
+  /** Batch upsert: items with localId → UPDATE; items without → INSERT. */
+  upsertManyFromRemote(items: BatchUpsertManufacturerInput[]): Promise<void>;
   deleteByLocalId(localId: string): Promise<boolean>;
   deleteAll(): Promise<void>;
 }
@@ -143,6 +170,8 @@ export interface ISyncMetaRepository {
 export interface IUsageEventRepository {
   /** Append-only. Never modifies existing events. */
   append(event: UsageEvent): Promise<void>;
+  /** Batch append. Never modifies existing events. */
+  appendMany(events: UsageEvent[]): Promise<void>;
   /** All events for a spool, ordered by occurredAt ascending. */
   listBySpool(spoolLocalId: string): Promise<UsageEvent[]>;
   /** Events for a spool since a given timestamp (inclusive), ordered ascending. */
@@ -165,6 +194,12 @@ export interface ISpoolStatsRepository {
     spoolLocalId: string,
     remainingWeight: number,
     updatedAt: number
+  ): Promise<void>;
+  /**
+   * Batch upsert remaining weights. Efficient for sync operations.
+   */
+  upsertManyRemainingWeights(
+    items: Array<{ spoolLocalId: string; remainingWeight: number; updatedAt: number }>
   ): Promise<void>;
   /**
    * Bulk-load remaining weights for a set of spoolLocalIds.
