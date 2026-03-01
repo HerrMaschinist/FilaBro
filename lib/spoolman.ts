@@ -9,9 +9,12 @@ export interface Filament {
   id: number;
   name: string;
   material: string;
-  /** Local-only: human-readable color name. Not from Spoolman API. */
+  /** Local-only: canonical color name (normalized). Not from Spoolman API. */
   color_name?: string;
+  /** Spoolman-sourced hex (no # prefix). */
   color_hex?: string;
+  /** Local-only: user-set #RRGGBB from ColorNormalizer. Not from Spoolman API. */
+  color_hex_normalized?: string;
   vendor?: Vendor;
   weight?: number;
   spool_weight?: number;
@@ -290,6 +293,8 @@ export async function updateSpoolWeight(
 }
 
 export function getFilamentColor(spool: Spool): string {
+  const normalized = spool.filament?.color_hex_normalized;
+  if (normalized) return normalized.startsWith("#") ? normalized : `#${normalized}`;
   const hex = spool.filament?.color_hex;
   if (!hex) return "#888888";
   return hex.startsWith("#") ? hex : `#${hex}`;

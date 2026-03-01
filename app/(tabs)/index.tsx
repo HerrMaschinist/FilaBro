@@ -380,7 +380,7 @@ export default function SpoolsScreen() {
 
       <FlatList
         data={filtered}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item) => item._localId ?? String(item.id)}
         renderItem={renderItem}
         contentContainerStyle={[
           s.list,

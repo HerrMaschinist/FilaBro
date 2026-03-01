@@ -54,7 +54,7 @@ export default function FavoritesScreen() {
       ) : (
         <FlatList
           data={favoriteSpools}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item) => item._localId ?? String(item.id)}
           renderItem={({ item, index }) => (
             <SpoolCard
               spool={item}

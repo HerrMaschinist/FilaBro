@@ -286,16 +286,25 @@ export default function SpoolDetailScreen() {
             {spool.filament.vendor?.name && (
               <InfoRow label={t("detail.manufacturer")} value={spool.filament.vendor.name} colors={colors} isDark={isDark} />
             )}
-            {(spool.filament.color_name || spool.filament.color_hex) && (
-              <InfoRow
-                label={t("detail.color")}
-                value={spool.filament.color_name ?? `#${spool.filament.color_hex}`}
-                subValue={spool.filament.color_name && spool.filament.color_hex ? `#${spool.filament.color_hex}` : undefined}
-                colors={colors}
-                isDark={isDark}
-                colorSwatch={spool.filament.color_hex}
-              />
-            )}
+            {(spool.filament.color_name || spool.filament.color_hex || spool.filament.color_hex_normalized) && (() => {
+              const displayHex = spool.filament.color_hex_normalized
+                ?? (spool.filament.color_hex ? `#${spool.filament.color_hex}` : undefined);
+              const swatchHex = spool.filament.color_hex_normalized
+                ? spool.filament.color_hex_normalized.replace(/^#/, "")
+                : spool.filament.color_hex;
+              const displayValue = spool.filament.color_name ?? displayHex ?? "";
+              const subValueText = spool.filament.color_name && displayHex ? displayHex : undefined;
+              return (
+                <InfoRow
+                  label={t("detail.color")}
+                  value={displayValue}
+                  subValue={subValueText}
+                  colors={colors}
+                  isDark={isDark}
+                  colorSwatch={swatchHex}
+                />
+              );
+            })()}
             {spool.filament.weight !== undefined && (
               <InfoRow label={t("detail.full_weight")} value={`${spool.filament.weight}g`} colors={colors} isDark={isDark} />
             )}
