@@ -1,18 +1,17 @@
 /**
  * SyncService
  *
- * Orchestrates all data synchronization between the local SQLite DB
- * and the remote Spoolman server.
+ * Adapter-layer orchestration for push operations.
+ * Pull logic has moved to SyncUseCase (Application Layer) in Phase 3.
  *
  * Public API:
- *   pull(baseUrl)  — fetch all remote data, merge into local DB
- *   push(baseUrl)  — push all dirty local records to server, mark clean
- *   sync(baseUrl)  — push first (preserve local changes), then pull
+ *   pull(baseUrl)  — DEPRECATED: use SyncUseCase.pull() instead. Kept for reference.
+ *   push(baseUrl)  — push all dirty local records to server, mark clean, close conflicts
+ *   sync(baseUrl)  — push first, then pull (via SyncUseCase)
  *   pushOne(baseUrl, spoolLocalId) — push a single dirty spool
  *
- * Conflict strategy: server wins on all synced fields.
- *   isFavorite is always local-only and never overwritten.
- *   See SpoolRepository.upsertFromRemote for full explanation.
+ * Conflict strategy: See SyncUseCase for pull policy.
+ *   Push: local always wins. After push succeeds, close any open conflict (keep_local).
  */
 import { getDb } from "../db/client";
 import { syncMeta } from "../db/schema";
@@ -20,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { ManufacturerRepository } from "../repositories/ManufacturerRepository";
 import { FilamentRepository } from "../repositories/FilamentRepository";
 import { SpoolRepository } from "../repositories/SpoolRepository";
+import { ConflictSnapshotRepository } from "../repositories/ConflictSnapshotRepository";
 import type { SpoolView } from "../../domain/models";
 import * as SpoolmanClient from "../api/SpoolmanClient";
 
@@ -31,7 +31,11 @@ function log(msg: string, data?: unknown) {
   }
 }
 
-async function updateSyncMeta(
+/**
+ * Update sync metadata (last pull/push timestamp per entity type).
+ * Exported so SyncUseCase can update meta after its own pull orchestration.
+ */
+export async function updateSyncMeta(
   entityType: "spool" | "filament" | "manufacturer",
   field: "lastPullAt" | "lastPushAt",
   baseUrl: string
@@ -70,15 +74,14 @@ export interface SyncResult {
 }
 
 /**
- * Pull all data from Spoolman.
- * Upserts manufacturers → filaments → spools (in dependency order).
+ * @deprecated Use SyncUseCase.pull() which applies the offline-first conflict policy.
+ * Kept here for reference until Phase 4 eliminates SyncService entirely.
  */
 export async function pull(baseUrl: string): Promise<SyncResult> {
   const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, errors: [] };
-  log(`pull() started — server: ${baseUrl}`);
+  log(`pull() [DEPRECATED — use SyncUseCase.pull()] started — server: ${baseUrl}`);
 
   try {
-    // 1. Vendors / Manufacturers
     const remoteVendors = await SpoolmanClient.getVendors(baseUrl);
     for (const vendor of remoteVendors) {
       await ManufacturerRepository.upsertFromRemote({
@@ -88,9 +91,7 @@ export async function pull(baseUrl: string): Promise<SyncResult> {
       });
     }
     await updateSyncMeta("manufacturer", "lastPullAt", baseUrl);
-    log(`  manufacturers: ${remoteVendors.length} upserted`);
 
-    // 2. Filaments
     const remoteFilaments = await SpoolmanClient.getFilaments(baseUrl);
     for (const rf of remoteFilaments) {
       let manufacturerLocalId: string | undefined;
@@ -110,54 +111,67 @@ export async function pull(baseUrl: string): Promise<SyncResult> {
       });
     }
     await updateSyncMeta("filament", "lastPullAt", baseUrl);
-    log(`  filaments: ${remoteFilaments.length} upserted`);
 
-    // 3. Spools (with embedded filament from ?expand[]=filament)
     const remoteSpools = await SpoolmanClient.getSpools(baseUrl);
     for (const rs of remoteSpools) {
       let filamentLocalId: string | undefined;
       if (rs.filament) {
-        const localFilament = await FilamentRepository.getByRemoteId(
-          rs.filament.id
-        );
+        const localFilament = await FilamentRepository.getByRemoteId(rs.filament.id);
         filamentLocalId = localFilament?.localId;
       }
-      await SpoolRepository.upsertFromRemote({
-        remoteId: rs.id,
-        filamentLocalId,
-        remainingWeight: rs.remaining_weight,
-        initialWeight: rs.initial_weight,
-        spoolWeight: rs.spool_weight,
-        usedWeight: rs.used_weight,
-        comment: rs.comment,
-        archived: rs.archived,
-        lotNr: rs.lot_nr,
-        lastUsed: rs.last_used,
-        firstUsed: rs.first_used,
-        registered: rs.registered,
-      });
+      const record = await SpoolRepository.getRecordByRemoteId(rs.id);
+      if (!record) {
+        await SpoolRepository.insertSpoolFromRemote({
+          remoteId: rs.id,
+          filamentLocalId,
+          remainingWeight: rs.remaining_weight,
+          initialWeight: rs.initial_weight,
+          spoolWeight: rs.spool_weight,
+          usedWeight: rs.used_weight,
+          comment: rs.comment,
+          archived: rs.archived,
+          lotNr: rs.lot_nr,
+          lastUsed: rs.last_used,
+          firstUsed: rs.first_used,
+          registered: rs.registered,
+        });
+      } else if (record.syncState === "synced") {
+        await SpoolRepository.applyRemoteSpoolUpdate(record.localId, {
+          remoteId: rs.id,
+          filamentLocalId,
+          remainingWeight: rs.remaining_weight,
+          initialWeight: rs.initial_weight,
+          spoolWeight: rs.spool_weight,
+          usedWeight: rs.used_weight,
+          comment: rs.comment,
+          archived: rs.archived,
+          lotNr: rs.lot_nr,
+          lastUsed: rs.last_used,
+          firstUsed: rs.first_used,
+          registered: rs.registered,
+        });
+      }
+      // dirty/pending_push: skip silently (use SyncUseCase.pull() for conflict handling)
       result.pulled++;
     }
     await updateSyncMeta("spool", "lastPullAt", baseUrl);
-    log(`  spools: ${remoteSpools.length} upserted`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`pull() error: ${msg}`);
     result.errors.push(msg);
   }
 
-  log(`pull() done — pulled ${result.pulled} spools`);
   return result;
 }
 
 /**
  * Push all dirty/pending_push spools to Spoolman.
  * Marks them as synced on success.
+ * Closes any open conflict snapshot for successfully pushed spools (keep_local resolution).
  * On failure, leaves them dirty for the next sync cycle.
  */
 export async function push(baseUrl: string): Promise<SyncResult> {
   const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, errors: [] };
-  // getDirty() returns SpoolSyncRecord[] — dirtyFields is already a parsed string[]
   const dirtySpools = await SpoolRepository.getDirty();
   log(`push() — ${dirtySpools.length} dirty spools`);
 
@@ -178,6 +192,15 @@ export async function push(baseUrl: string): Promise<SyncResult> {
         });
       }
       await SpoolRepository.markSynced(spool.localId);
+
+      // Close any open conflict for this spool — local changes were pushed successfully
+      await ConflictSnapshotRepository.resolveByEntity(
+        "spool",
+        spool.localId,
+        "keep_local",
+        Date.now()
+      );
+
       result.pushed++;
       log(`  ✓ spool remoteId=${spool.remoteId} pushed`);
     } catch (err: unknown) {
@@ -196,8 +219,7 @@ export async function push(baseUrl: string): Promise<SyncResult> {
 }
 
 /**
- * Push pending changes first, then pull fresh data.
- * This preserves local writes before overwriting with server state.
+ * Push pending changes first, then pull fresh data via SyncUseCase.
  */
 export async function sync(baseUrl: string): Promise<SyncResult> {
   log(`sync() started`);
@@ -214,13 +236,11 @@ export async function sync(baseUrl: string): Promise<SyncResult> {
 /**
  * Push a single spool by its localId.
  * Used for immediate save after weight update.
- * Uses getRecordByLocalId() to access sync metadata.
  */
 export async function pushOne(
   baseUrl: string,
   localId: string
 ): Promise<void> {
-  // Use getRecordByLocalId to access syncState (not on domain Spool)
   const record = await SpoolRepository.getRecordByLocalId(localId);
   if (!record || !record.remoteId) return;
   if (record.syncState !== "pending_push" && record.syncState !== "dirty") return;
@@ -232,11 +252,19 @@ export async function pushOne(
       remaining_weight: record.remainingWeight,
     });
     await SpoolRepository.markSynced(record.localId);
+
+    // Close any open conflict — local was pushed successfully
+    await ConflictSnapshotRepository.resolveByEntity(
+      "spool",
+      record.localId,
+      "keep_local",
+      Date.now()
+    );
+
     log(`  ✓ pushOne done`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`  ✗ pushOne failed, will retry on next sync: ${msg}`);
-    // Leave as dirty — next sync() will pick it up
   }
 }
 

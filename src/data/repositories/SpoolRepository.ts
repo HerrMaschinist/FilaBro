@@ -5,15 +5,12 @@
  * Uses getDb() exclusively — no Platform.OS checks, no null guards.
  * On web, getDb() returns a NullProxy → all queries resolve to [].
  *
- * Conflict strategy (documented):
- *   Server wins on all remote fields when server data is newer.
- *   isFavorite is local-only — never overwritten by remote data.
- *   If local syncState is 'pending_push' AND server has a different remaining_weight:
- *     → conflict logged, server wins (last-write-wins from server perspective).
- *   Rationale: Spoolman has no versioning; we cannot determine who wrote last.
- *
- * Public API returns Spool (clean domain type, no sync fields).
- * getDirty() and getRecordByLocalId() return SpoolSyncRecord (adapter-layer only).
+ * Phase 3 changes:
+ *   - Removed `upsertFromRemote()` — contained server-wins policy.
+ *   - Added `applyRemoteSpoolUpdate()` — pure data write, called by Application Layer.
+ *   - Added `insertSpoolFromRemote()` — insert unknown remote entity, no policy.
+ *   - Added `setSyncState()` — explicit state control for Application Layer.
+ *   - All conflict policy decisions belong in SyncUseCase, not here.
  */
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
@@ -147,6 +144,16 @@ export const SpoolRepository = {
     return rows[0] ? toSpool(rows[0]) : null;
   },
 
+  /** Returns the sync record for a spool found by remoteId (adapter-layer use only). */
+  async getRecordByRemoteId(remoteId: number): Promise<SpoolSyncRecord | null> {
+    const rows = await getDb()
+      .select()
+      .from(spools)
+      .where(eq(spools.remoteId, remoteId))
+      .limit(1);
+    return rows[0] ? toSpoolSyncRecord(rows[0]) : null;
+  },
+
   async getByLocalIdView(localId: string): Promise<SpoolView | null> {
     const spool = await this.getByLocalId(localId);
     if (!spool) return null;
@@ -183,11 +190,87 @@ export const SpoolRepository = {
   },
 
   /**
-   * Upsert a spool from Spoolman API response.
-   * Preserves isFavorite (local-only field).
-   * Server wins on all remote fields — conflict is logged in __DEV__.
+   * Apply a remote update to an existing local spool.
+   * Called by Application Layer ONLY when it has decided to accept_remote.
+   * Does NOT check syncState — that decision belongs to the caller.
    */
-  async upsertFromRemote(data: {
+  async applyRemoteSpoolUpdate(
+    localId: string,
+    data: {
+      remoteId: number;
+      filamentLocalId?: string;
+      remainingWeight?: number;
+      initialWeight?: number;
+      spoolWeight?: number;
+      usedWeight?: number;
+      comment?: string;
+      archived?: boolean;
+      lotNr?: string;
+      lastUsed?: string;
+      firstUsed?: string;
+      registered?: string;
+    }
+  ): Promise<Spool | null> {
+    const now = Date.now();
+
+    const rows = await getDb()
+      .select()
+      .from(spools)
+      .where(eq(spools.localId, localId))
+      .limit(1);
+    if (!rows[0]) return null;
+
+    const existing = rows[0];
+
+    await getDb()
+      .update(spools)
+      .set({
+        remoteId: data.remoteId,
+        filamentLocalId: data.filamentLocalId ?? null,
+        remainingWeight: data.remainingWeight ?? null,
+        initialWeight: data.initialWeight ?? null,
+        spoolWeight: data.spoolWeight ?? null,
+        usedWeight: data.usedWeight ?? null,
+        comment: data.comment ?? null,
+        archived: data.archived ? 1 : 0,
+        lotNr: data.lotNr ?? null,
+        lastUsed: data.lastUsed ?? null,
+        firstUsed: data.firstUsed ?? null,
+        registered: data.registered ?? null,
+        syncState: "synced",
+        dirtyFields: null,
+        localVersion: existing.localVersion + 1,
+        lastModifiedAt: now,
+      })
+      .where(eq(spools.localId, localId));
+
+    return {
+      localId,
+      remoteId: data.remoteId,
+      filamentLocalId: data.filamentLocalId ?? undefined,
+      remainingWeight: data.remainingWeight ?? undefined,
+      initialWeight: data.initialWeight ?? undefined,
+      spoolWeight: data.spoolWeight ?? undefined,
+      usedWeight: data.usedWeight ?? undefined,
+      comment: data.comment ?? undefined,
+      archived: !!data.archived,
+      displayName: existing.displayName ?? undefined,
+      qrCode: existing.qrCode ?? undefined,
+      nfcTagId: existing.nfcTagId ?? undefined,
+      lotNr: data.lotNr ?? undefined,
+      lastUsed: data.lastUsed ?? undefined,
+      firstUsed: data.firstUsed ?? undefined,
+      registered: data.registered ?? undefined,
+      isFavorite: existing.isFavorite === 1,
+      lastModifiedAt: now,
+    };
+  },
+
+  /**
+   * Insert a spool received from remote that does not exist locally.
+   * Assigns syncState = "synced" since the record is in sync with the server.
+   */
+  async insertSpoolFromRemote(data: {
     remoteId: number;
     filamentLocalId?: string;
     remainingWeight?: number;
@@ -202,9 +285,10 @@ export const SpoolRepository = {
     registered?: string;
   }): Promise<Spool> {
     const now = Date.now();
-
-    // DB payload uses null to clear optional fields in SQLite
-    const dbPayload = {
+    const localId = generateLocalId();
+    const insert: InsertSpool = {
+      localId,
+      remoteId: data.remoteId,
       filamentLocalId: data.filamentLocalId ?? null,
       remainingWeight: data.remainingWeight ?? null,
       initialWeight: data.initialWeight ?? null,
@@ -216,75 +300,39 @@ export const SpoolRepository = {
       lastUsed: data.lastUsed ?? null,
       firstUsed: data.firstUsed ?? null,
       registered: data.registered ?? null,
-      lastModifiedAt: now,
-    };
-
-    const existingRows = await getDb()
-      .select()
-      .from(spools)
-      .where(eq(spools.remoteId, data.remoteId))
-      .limit(1);
-
-    if (existingRows[0]) {
-      const existing = existingRows[0];
-
-      if (
-        existing.syncState === "pending_push" &&
-        existing.remainingWeight !== (data.remainingWeight ?? null)
-      ) {
-        if (__DEV__) {
-          console.log(
-            `[SpoolRepository] CONFLICT spool remoteId=${data.remoteId}: ` +
-              `local=${existing.remainingWeight}g remote=${data.remainingWeight}g → server wins`
-          );
-        }
-      }
-
-      await getDb()
-        .update(spools)
-        .set({
-          ...dbPayload,
-          syncState: "synced",
-          dirtyFields: null,
-          localVersion: existing.localVersion + 1,
-        })
-        .where(eq(spools.localId, existing.localId));
-
-      // Domain return uses undefined (no null in domain types)
-      return {
-        localId: existing.localId,
-        remoteId: data.remoteId,
-        filamentLocalId: data.filamentLocalId ?? undefined,
-        remainingWeight: data.remainingWeight ?? undefined,
-        initialWeight: data.initialWeight ?? undefined,
-        spoolWeight: data.spoolWeight ?? undefined,
-        usedWeight: data.usedWeight ?? undefined,
-        comment: data.comment ?? undefined,
-        archived: !!data.archived,
-        displayName: existing.displayName ?? undefined,
-        qrCode: existing.qrCode ?? undefined,
-        nfcTagId: existing.nfcTagId ?? undefined,
-        lotNr: data.lotNr ?? undefined,
-        lastUsed: data.lastUsed ?? undefined,
-        firstUsed: data.firstUsed ?? undefined,
-        registered: data.registered ?? undefined,
-        isFavorite: existing.isFavorite === 1,
-        lastModifiedAt: now,
-      };
-    }
-
-    const localId = generateLocalId();
-    const insert: InsertSpool = {
-      localId,
-      remoteId: data.remoteId,
-      ...dbPayload,
       isFavorite: 0,
       syncState: "synced",
       dirtyFields: null,
       localVersion: 1,
+      lastModifiedAt: now,
     };
     await getDb().insert(spools).values(insert);
     return toSpool(insert as typeof spools.$inferSelect);
+  },
+
+  /**
+   * Explicitly set the sync state of a spool.
+   * Called by Application Layer after conflict detection or resolution.
+   */
+  async setSyncState(
+    localId: string,
+    state: string,
+    dirtyFields?: string[],
+    localVersion?: number
+  ): Promise<void> {
+    const payload: Record<string, unknown> = { syncState: state };
+    if (dirtyFields !== undefined) {
+      payload.dirtyFields = dirtyFields.length > 0
+        ? JSON.stringify(dirtyFields)
+        : null;
+    }
+    if (localVersion !== undefined) {
+      payload.localVersion = localVersion;
+    }
+    await getDb()
+      .update(spools)
+      .set(payload)
+      .where(eq(spools.localId, localId));
   },
 
   /**

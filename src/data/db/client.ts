@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import * as schema from "./schema";
 
 const DB_NAME = "filabro.db";
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 /**
  * Versioned SQL migrations.
@@ -96,6 +96,22 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
       `ALTER TABLE spools ADD COLUMN display_name TEXT`,
       `ALTER TABLE spools ADD COLUMN qr_code TEXT`,
       `ALTER TABLE spools ADD COLUMN nfc_tag_id TEXT`,
+    ],
+  },
+  {
+    version: 3,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS conflict_snapshots (
+         id                   TEXT PRIMARY KEY,
+         entity_type          TEXT NOT NULL,
+         local_id             TEXT NOT NULL,
+         remote_snapshot_json TEXT NOT NULL,
+         captured_at          INTEGER NOT NULL,
+         resolved_at          INTEGER,
+         resolution           TEXT
+       )`,
+      `CREATE INDEX IF NOT EXISTS conflict_local_entity_idx ON conflict_snapshots(entity_type, local_id)`,
+      `CREATE INDEX IF NOT EXISTS conflict_resolved_idx ON conflict_snapshots(resolved_at)`,
     ],
   },
 ];

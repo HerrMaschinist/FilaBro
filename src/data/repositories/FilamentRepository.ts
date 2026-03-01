@@ -76,6 +76,19 @@ export const FilamentRepository = {
     return rows[0] ? toFilament(rows[0]) : null;
   },
 
+  /** Returns minimal sync record for a filament found by remoteId (adapter-layer use only). */
+  async getRecordByRemoteId(
+    remoteId: number
+  ): Promise<{ localId: string; syncState: string } | null> {
+    const rows = await getDb()
+      .select()
+      .from(filaments)
+      .where(eq(filaments.remoteId, remoteId))
+      .limit(1);
+    if (!rows[0]) return null;
+    return { localId: rows[0].localId, syncState: rows[0].syncState };
+  },
+
   async createLocal(data: {
     name: string;
     material: string;
@@ -162,6 +175,14 @@ export const FilamentRepository = {
         data.comment !== undefined ? data.comment || undefined : existing.comment,
       lastModifiedAt: now,
     };
+  },
+
+  /** Explicitly set sync state — called by Application Layer during conflict handling. */
+  async setSyncState(localId: string, state: string): Promise<void> {
+    await getDb()
+      .update(filaments)
+      .set({ syncState: state })
+      .where(eq(filaments.localId, localId));
   },
 
   async deleteByLocalId(localId: string): Promise<boolean> {

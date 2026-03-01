@@ -151,6 +151,9 @@ interface AppContextValue {
 
   persistenceEnabled: boolean;
 
+  /** Count of open (unresolved) conflict snapshots. 0 = no conflicts. */
+  openConflictCount: number;
+
   manufacturers: Manufacturer[];
   filaments: DomainFilament[];
   createManufacturer: (
@@ -189,6 +192,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState("en");
   const [dirtySpoolIds, setDirtySpoolIds] = useState<Set<number>>(new Set());
 
+  const [openConflictCount, setOpenConflictCount] = useState(0);
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [filaments, setFilaments] = useState<DomainFilament[]>([]);
 
@@ -218,12 +222,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         if (isPersistenceEnabled) {
-          const [mfrs, fils] = await Promise.all([
+          const [mfrs, fils, conflictCount] = await Promise.all([
             CatalogUseCase.loadManufacturers(),
             CatalogUseCase.loadFilaments(),
+            SyncUseCase.getOpenConflictCount(),
           ]);
           setManufacturers(mfrs);
           setFilaments(fils);
+          setOpenConflictCount(conflictCount);
 
           if (onboarded) {
             const local = await SyncUseCase.getLocalSpools();
@@ -295,8 +301,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       const result = await SyncUseCase.sync(serverUrl);
-      const local = await SyncUseCase.getLocalSpools();
+      const [local, conflictCount] = await Promise.all([
+        SyncUseCase.getLocalSpools(),
+        SyncUseCase.getOpenConflictCount(),
+      ]);
       setSpools(local.map(toViewSpool));
+      setOpenConflictCount(conflictCount);
 
       if (
         result.errors.length > 0 &&
@@ -639,6 +649,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       language,
       setLanguage,
       persistenceEnabled: isPersistenceEnabled,
+      openConflictCount,
       manufacturers,
       filaments,
       createManufacturer,
@@ -676,6 +687,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDefaultWeightMode,
       language,
       setLanguage,
+      openConflictCount,
       manufacturers,
       filaments,
       createManufacturer,

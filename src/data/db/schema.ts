@@ -7,6 +7,7 @@ import {
   text,
   integer,
   real,
+  index,
 } from "drizzle-orm/sqlite-core";
 
 export const manufacturers = sqliteTable("manufacturers", {
@@ -80,6 +81,36 @@ export const printerProfiles = sqliteTable("printer_profiles", {
   compatibleMaterials: text("compatible_materials"),
 });
 
+/**
+ * Stores unresolved conflicts between local state and remote snapshots.
+ * Written by SyncUseCase when a conflict is flagged.
+ * Read by UI to show conflict indicators.
+ * Resolved by Application Layer when the user makes a decision.
+ */
+export const conflictSnapshots = sqliteTable(
+  "conflict_snapshots",
+  {
+    id: text("id").primaryKey(),
+    /** "spool" | "filament" | "manufacturer" */
+    entityType: text("entity_type").notNull(),
+    localId: text("local_id").notNull(),
+    /** JSON-serialized remote DTO at time of conflict */
+    remoteSnapshotJson: text("remote_snapshot_json").notNull(),
+    capturedAt: integer("captured_at").notNull(),
+    /** null = open conflict (unresolved) */
+    resolvedAt: integer("resolved_at"),
+    /** "keep_local" | "accept_remote" | null */
+    resolution: text("resolution"),
+  },
+  (t) => ({
+    localEntityIdx: index("conflict_local_entity_idx").on(
+      t.entityType,
+      t.localId
+    ),
+    resolvedIdx: index("conflict_resolved_idx").on(t.resolvedAt),
+  })
+);
+
 export type DbManufacturer = typeof manufacturers.$inferSelect;
 export type InsertManufacturer = typeof manufacturers.$inferInsert;
 export type DbFilament = typeof filaments.$inferSelect;
@@ -87,3 +118,5 @@ export type InsertFilament = typeof filaments.$inferInsert;
 export type DbSpool = typeof spools.$inferSelect;
 export type InsertSpool = typeof spools.$inferInsert;
 export type DbSyncMeta = typeof syncMeta.$inferSelect;
+export type DbConflictSnapshot = typeof conflictSnapshots.$inferSelect;
+export type InsertConflictSnapshot = typeof conflictSnapshots.$inferInsert;

@@ -1,0 +1,157 @@
+# Replit Prompt: FilaBro Phase 3 umsetzen (Offline First Sync, Konflikte, keine Server Wins)
+
+Du arbeitest im bestehenden FilaBro Repo. Phase 1 und Phase 2 sind bereits umgesetzt.
+Phase 2 Ergebnis ist:
+- Core Domain liegt unter /src/core/domain und enthält keine Sync Felder.
+- Sync Typen liegen unter /src/core/domain/sync.
+- /src/domain/models.ts ist ein Re Export Shim.
+- Ports unter /src/core/ports nutzen Core Domain Typen.
+- TypeScript kompiliert clean.
+
+Jetzt implementierst Du Phase 3: Offline First Konfliktstrategie und saubere Trennung von Policy und Persistenz.
+
+Ziele Phase 3
+1. Offline ist Quelle der Wahrheit.
+2. Lokale Änderungen werden niemals implizit überschrieben.
+3. Server Wins Logik wird komplett entfernt.
+4. Konflikte werden deterministisch gespeichert, nicht still gelöst.
+5. Konfliktentscheidungen liegen in Application Layer, nicht in Repository.
+6. Projekt baut nach Phase 3, inklusive tsc.
+
+Nicht verhandelbar
+1. Konkrete Dateipfade, kompletter Dateiinhalt oder Diff pro Änderung.
+2. Keine UI Redesigns. Nur technische Anpassungen die für Konflikt Support nötig sind.
+3. Domain bleibt rein. Keine Infrastruktur Imports in /src/core/domain.
+4. Repositories enthalten keine Konflikt Policy mehr, nur Datenzugriff.
+5. Jede neue Tabelle bekommt sinnvolle Indizes.
+
+Begriffsklärung
+- Lokal dirty oder pending_push bedeutet lokale Änderungen existieren.
+- Remote Update darf in diesem Zustand nicht überschreiben.
+- Konflikt bedeutet: remote weicht ab, während lokal dirty oder pending_push ist.
+
+Aufgaben Phase 3 im Detail
+
+Schritt 3.1: Conflict Policy im Core definieren
+1. Erstelle:
+   /src/core/application/conflict/ConflictResolver.ts
+
+Inhalt:
+- Typ ConflictResolution mit Werten keep_local, accept_remote, flag_conflict
+- Interface IConflictResolver mit Methode resolve(localSyncState, localVersion, remoteSnapshot) -> ConflictResolution
+- Default Resolver LocalFirstResolver:
+  Wenn local syncState ist dirty oder pending_push, dann flag_conflict
+  Sonst accept_remote
+
+Wichtig:
+- Resolver hängt nicht von Spoolman ab.
+- Resolver arbeitet mit generischem Remote Snapshot Objekt.
+
+Schritt 3.2: Konflikt Speicherung als Adapter Persistenz
+1. Erweitere DB Schema:
+   /src/data/db/schema.ts
+
+Neue Tabelle conflict_snapshots:
+- id text primary key
+- entity_type text not null, Werte spool, filament, manufacturer
+- local_id text not null
+- remote_snapshot_json text not null
+- captured_at integer not null
+- resolved_at integer nullable
+- resolution text nullable, Werte keep_local, accept_remote
+
+Indizes:
+- conflict_local_entity_idx auf entity_type und local_id
+- conflict_resolved_idx auf resolved_at
+
+2. Repository für Konflikte anlegen:
+   /src/data/repositories/ConflictSnapshotRepository.ts
+
+Methoden:
+- upsertOpen(entityType, localId, remoteSnapshotJson, capturedAt)
+- getOpenByEntity(entityType, localId)
+- listOpen(entityType optional)
+- resolve(id, resolution, resolvedAt)
+
+Schritt 3.3: Sync State Handling sauber trennen
+1. Stelle sicher, dass Sync Metadaten weiterhin nur in Sync Records liegen, nicht in Domain Entities.
+2. Stelle sicher, dass SyncService niemals Domain Objekte für Sync Metadaten liest.
+
+Schritt 3.4: Server Wins aus SpoolRepository entfernen
+1. Suche in:
+   /src/data/repositories/SpoolRepository.ts
+
+Entferne jede Logik die entscheidet, ob remote oder lokal gewinnt.
+Repository darf nur bieten:
+- read local row und read sync record
+- applyRemoteUpdate nur wenn Application Layer das entscheidet
+- insertFromRemote für unbekannte local records
+- Methoden um syncState zu setzen
+
+Konkrete neue Methoden, falls nötig:
+- applyRemoteSpoolUpdate(localId, remoteDataMapped)
+- insertSpoolFromRemote(remoteDataMapped)
+- setSyncState(localId, state, dirtyFields optional, localVersion optional, remoteVersion optional)
+
+Wichtig:
+- SpoolRepository darf Konflikte nicht markieren ohne dass Application Layer es entscheidet.
+- SpoolRepository darf conflict_snapshots nicht schreiben.
+
+Schritt 3.5: SyncUseCase implementiert Pull Orchestrierung mit Konflikt Policy
+1. Erweitere oder erstelle:
+   /src/core/application/SyncUseCase.ts
+
+Anforderungen:
+- Der UseCase bekommt injected:
+  - IExternalFilamentSystemPort, bereits vorhanden
+  - ISpoolRepository, IFilamentRepository, IManufacturerRepository
+  - ISyncStateRepository oder SyncMeta Repository, je nachdem was im Repo existiert
+  - ConflictSnapshotRepository Adapter oder Port plus Adapter
+  - IConflictResolver
+
+Pull Ablauf pro Entity:
+1. Remote Datensatz kommt rein.
+2. Finde lokale Entität über ExternalRef Mapping oder remoteId Mapping im Adapter.
+3. Wenn keine lokale Entität existiert:
+   Insert lokal, SyncState synced
+4. Wenn lokale Entität existiert:
+   Lese lokalen Sync Record.
+   Wenn local SyncState ist synced:
+     accept_remote, applyRemoteUpdate
+   Wenn local SyncState ist dirty oder pending_push:
+     flag_conflict
+     schreibe conflict snapshot, setze syncState conflict
+     überschreibe keine fachlichen Felder
+
+Wichtig:
+- Kein accept_remote bei dirty oder pending_push.
+- Konflikt Snapshot muss JSON des remote Objekts speichern.
+- setze syncState conflict nur wenn tatsächlich remote Abweichung existiert.
+  Falls remote identisch ist, bleibt der lokale Zustand bestehen.
+
+Schritt 3.6: Push Verhalten bleibt safe
+Push darf nur:
+- dirty oder pending_push pushen
+Nach Erfolg:
+- SyncState synced
+- dirtyFields leer
+- conflict snapshot für dieses entity schließen, falls vorhanden und offen
+
+Schritt 3.7: UI Minimal Support nur falls zwingend
+Wenn irgendwo UI bisher remote Pull implizit überschrieben hat, muss das entfernt bleiben.
+UI kann optional nur einen Indikator bekommen, dass Konflikte existieren.
+Keine Konflikt UI bauen, außer minimal:
+- Anzeige count offener Konflikte in AppContext state
+
+Lieferformat
+1. Liste aller neu erstellten Dateien mit komplettem Inhalt.
+2. Liste aller geänderten Dateien mit Diff oder kompletter Datei.
+3. Kurzer Hinweis pro Datei, warum geändert.
+4. Am Ende Prüfkommandos und erwartetes Ergebnis.
+
+Prüfkommandos am Ende ausführen und Ergebnis berichten
+1. npx tsc --noEmit
+2. rg -n "server wins|last-write-wins|pending_push.*accept_remote" /home/runner/workspace/src
+3. rg -n "from 'expo|react-native|drizzle|sqlite|fetch|axios|nfc|camera" /home/runner/workspace/src/core/domain || true
+
+Start jetzt mit Schritt 3.1 und liefere die komplette Phase 3 Umsetzung in einem Durchlauf.

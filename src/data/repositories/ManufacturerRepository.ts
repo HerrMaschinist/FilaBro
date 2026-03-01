@@ -64,6 +64,19 @@ export const ManufacturerRepository = {
     return rows[0] ? toManufacturer(rows[0]) : null;
   },
 
+  /** Returns minimal sync record for a manufacturer found by remoteId (adapter-layer use only). */
+  async getRecordByRemoteId(
+    remoteId: number
+  ): Promise<{ localId: string; syncState: string } | null> {
+    const rows = await getDb()
+      .select()
+      .from(manufacturers)
+      .where(eq(manufacturers.remoteId, remoteId))
+      .limit(1);
+    if (!rows[0]) return null;
+    return { localId: rows[0].localId, syncState: rows[0].syncState };
+  },
+
   async createLocal(data: {
     name: string;
     website?: string;
@@ -123,6 +136,14 @@ export const ManufacturerRepository = {
         data.comment !== undefined ? data.comment || undefined : existing.comment,
       lastModifiedAt: now,
     };
+  },
+
+  /** Explicitly set sync state — called by Application Layer during conflict handling. */
+  async setSyncState(localId: string, state: string): Promise<void> {
+    await getDb()
+      .update(manufacturers)
+      .set({ syncState: state })
+      .where(eq(manufacturers.localId, localId));
   },
 
   async deleteByLocalId(localId: string): Promise<boolean> {
