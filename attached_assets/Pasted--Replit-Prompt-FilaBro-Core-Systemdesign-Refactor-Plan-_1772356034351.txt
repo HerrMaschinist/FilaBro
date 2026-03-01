@@ -1,0 +1,221 @@
+# Replit Prompt: FilaBro Core Systemdesign Refactor Plan und Umsetzung
+
+Du bist der Refactoring Agent für das Projekt FilaBro in Replit.
+
+Ziele
+1. Offline First bleibt Quelle der Wahrheit.
+2. Zukunftsfähiges, skalierbares Core System mit echter Domänenreinheit.
+3. Spoolman ist optionaler Adapter, keine enge Kopplung.
+4. Inkrementell umsetzen, Phase für Phase, ohne Big Bang.
+5. Jede Phase liefert lauffähigen Stand. Kein Zwischenzustand der nicht baut.
+
+Nicht verhandelbar
+1. Keine erfundenen Fakten. Nutze nur Code aus dem Repo.
+2. Nenne bei jeder Änderung konkrete Dateipfade.
+3. Keine komplette Neuschreibung.
+4. Keine UI Redesigns. Fokus ist Core Architektur und Sync.
+5. Jede Phase endet mit konkreten Kommandos zur Prüfung.
+
+Arbeitsweise
+1. Du arbeitest strikt in Phasen 1 bis 6.
+2. In jeder Phase machst Du:
+   1) Ziel
+   2) Änderungsplan
+   3) Konkrete Code Änderungen mit Datei und Inhalt
+   4) Migration Hinweise falls DB Schema betroffen ist
+   5) Prüfkommandos und erwartetes Ergebnis
+3. Du implementierst die Änderungen direkt als Patch Vorschläge, so dass ich es copy paste kann.
+
+Projekt Ist Zustand Hinweise
+1. Domain Verschmutzung in src/domain/models.ts durch syncState, dirtyFields, localVersion, remoteVersion.
+2. Server wins Konfliktlogik in src/data/repositories/SpoolRepository.ts.
+3. SyncService greift direkt auf DB Schema zu in src/data/sync/SyncService.ts.
+4. UI greift auf Repos direkt zu in contexts/.
+5. N+1 in getAllView in SpoolRepository.
+6. Keine DB Indizes in schema.ts.
+7. Verbrauch ist Zustand per remainingWeight Mutation.
+
+Zielarchitektur
+1. src/core/domain
+   Entitäten, Value Objects, Domain Regeln, keine Infrastruktur Felder
+2. src/core/application
+   Use Cases, Orchestrierung, Transaktionen, keine DB und keine HTTP Imports
+3. src/core/ports
+   Interfaces für Repos, External Ports, Clock, Ids, SyncState, ConflictResolution
+4. src/adapters
+   1) sqlite Adapter mit Drizzle
+   2) spoolman Adapter mit HTTP Client
+   3) scanner Adapter für QR und NFC als Input
+5. UI
+   Ruft nur Application Use Cases auf
+
+Ab Phase 2 gilt zusätzlich
+Keine Domain Entität enthält remoteId als Pflichtfeld oder Identität.
+External References werden separat modelliert.
+
+Phasenplan und Umsetzung
+
+PHASE 1: Architekturgrenzen einziehen ohne Verhalten zu ändern
+Ziel
+1. Ports einführen.
+2. Application Einstiegsschicht schaffen.
+3. Bestehende Implementierungen nur umhüllen.
+
+Aufgaben
+1. Lege Ordner an:
+   1) /src/core/domain
+   2) /src/core/ports
+   3) /src/core/application
+   4) /src/adapters/sqlite
+   5) /src/adapters/spoolman
+2. Erstelle src/core/ports mit Interfaces:
+   ISpoolRepository, IFilamentRepository, IManufacturerRepository
+   ISyncMetaRepository oder ISyncStateRepository
+   IExternalFilamentSystemPort
+   IClock, IIdGenerator
+3. Erstelle src/core/application als Use Case Wrapper:
+   CatalogUseCase, ScanUseCase, SyncUseCase
+   Diese rufen intern vorerst die bisherigen Services Repos auf, aber nur über Ports.
+4. Passe UI Context Layer so an, dass er Use Cases nutzt statt direkt Repos.
+   Minimale Änderung, gleiche API nach außen.
+
+Ergebnis
+1. Code baut.
+2. Keine Logik Änderung, nur Boundary.
+
+PHASE 2: Domänenreinheit herstellen
+Ziel
+1. Entferne Sync Felder aus Domain Entitäten.
+2. Trenne Sync State, Dirty Fields, Versions in separate Struktur.
+3. Trenne External References separat.
+
+Aufgaben
+1. Verschiebe Domain Modelle nach src/core/domain:
+   1) src/core/domain/spool.ts
+   2) src/core/domain/filament.ts
+   3) src/core/domain/manufacturer.ts
+   4) src/core/domain/valueObjects optional minimal
+2. Erstelle src/core/domain/sync:
+   SyncState, SyncRecord, DirtyFieldSet als Array von Strings ohne JSON String.
+3. Erstelle src/core/domain/externalRef:
+   ExternalSystem = "spoolman"
+   ExternalRef { localId, system, remoteId }
+4. Passe Adapter Datenmodelle an, so dass DB Tabellen weiterhin remoteId speichern können, aber Domain Entität nicht davon abhängt.
+   Mapping erfolgt in Adaptern.
+
+Ergebnis
+1. Domain kennt keine DB Felder.
+2. Domain kennt keine HTTP Felder.
+3. Domain bleibt testbar.
+
+PHASE 3: Offline First Konfliktstrategie implementieren
+Ziel
+1. Entferne Server wins.
+2. Implementiere ConflictResolver als Policy im Application Layer.
+3. Speichere Konflikte deterministisch.
+
+Aufgaben
+1. Erstelle src/core/domain/conflict:
+   ConflictResolution = keep_local | accept_remote | flag_conflict
+   IConflictResolver Interface
+   Default LocalWinsResolver der bei dirty oder pending_push immer flag_conflict liefert.
+2. Implementiere Konflikt Persistenz:
+   Neue Tabelle conflict_snapshots mit Feldern:
+   id, localId, entityType, remoteSnapshotJson, capturedAt, resolvedAt optional, resolution optional
+3. SpoolRepository upsertFromRemote darf keine Policy mehr enthalten.
+   Es wird zu persistRemoteSnapshot oder applyRemoteUpdate je nach Entscheidung im Use Case.
+4. SyncUseCase orchestriert:
+   1) Pull remote
+   2) Für jeden Datensatz lokale Sync States lesen
+   3) Resolver anwenden
+   4) Bei conflict Snapshot speichern und SyncState auf conflict setzen
+   5) Bei accept_remote Update anwenden nur wenn lokal synced
+   6) Bei keep_local nichts überschreiben
+5. Push Verhalten:
+   Nur dirty oder pending_push pushen.
+   Nach Erfolg SyncState auf synced, Dirty Fields löschen, Conflict Snapshot falls vorhanden schließen.
+
+Ergebnis
+1. Lokale Änderungen werden niemals implizit überschrieben.
+2. Konflikte sind nachvollziehbar und UI kann sie später auflösen.
+
+PHASE 4: Verbrauchsmodell als Event Store
+Ziel
+1. Verbrauch wird append only.
+2. remainingWeight wird Projektion.
+3. Audit Trail und Prognosebasis sind vorhanden.
+
+Aufgaben
+1. Neue Tabelle usage_events:
+   id, spoolLocalId, grams, eventType, occurredAt, source optional
+2. Domain Service zur Aggregation:
+   computeRemainingWeight(spool, events) oder Projection im Adapter
+3. Use Case RecordUsage appendet Event, aktualisiert optional eine Projection Tabelle spool_stats für Performance.
+4. Migration
+   Bestehendes remainingWeight wird als initial Projection übernommen.
+   Kein Datenverlust, aber Historie beginnt ab Migration Zeitpunkt.
+
+Ergebnis
+1. Jede Änderung am Verbrauch ist auditierbar.
+2. Assistenz kann auf Events arbeiten.
+
+PHASE 5: Skalierung 1000 plus Spulen
+Ziel
+1. Keine N+1 Queries.
+2. Indizes für Sync und Scan.
+3. Paging APIs.
+
+Aufgaben
+1. Schema Indizes:
+   spools.remote_id
+   spools.archived
+   spools.sync_state
+   spools.filament_local_id
+   spools.qr_code
+   spools.nfc_tag_id
+   filaments.remote_id
+   manufacturers.remote_id
+2. getAllView auf JOIN oder Drizzle relations umstellen.
+3. Repository Methoden:
+   getPagedActive(offset, limit)
+   findByQrCode(qr)
+   findByNfcTagId(tagId)
+4. Sync Batch Upsert wo möglich.
+   Hersteller, Filamente, Spulen in Batches statt Loop mit 1000 Roundtrips.
+
+Ergebnis
+1. Scan ist O(log n) und nicht O(n).
+2. Listen sind paged.
+3. Sync läuft ohne Freeze.
+
+PHASE 6: Spoolman Adapter Entkopplung finalisieren
+Ziel
+1. Entferne doppelte Typen und doppelte HTTP Schicht.
+2. Spoolman ist reines DTO im Adapter.
+3. UI arbeitet ausschließlich auf Domain oder ViewModel aus Application.
+
+Aufgaben
+1. Entferne lib/spoolman.ts wenn redundant.
+2. SpoolmanClient ist die einzige HTTP Schicht.
+3. Mapping DTO zu Domain in /src/adapters/spoolman/mapper.ts
+4. Entferne toViewSpool Konverter im contexts Layer, ersetze durch Use Case Rückgaben.
+
+Ergebnis
+1. Keine Spoolman Shapes in UI.
+2. Kein Spoolman Code in Domain.
+
+Ausgabeformat
+1. Liefere pro Phase:
+   1) Dateien die neu entstehen mit vollständigem Inhalt
+   2) Dateien die geändert werden mit diff oder kompletter Datei
+   3) Hinweise wo eingefügt wird
+   4) Prüfbefehle
+2. Beginne mit Phase 1 und liefere die komplette Phase 1 Umsetzung.
+3. Nach Phase 1 liefere kurze Liste der erwarteten Compile Fehler die auftreten könnten und wie Du sie behebst.
+4. Dann liefere Phase 2 Umsetzung, usw.
+
+Wichtig
+Du darfst nur fortfahren wenn jede Phase ein buildbares Ergebnis hat.
+Wenn Du an einer Stelle nicht sicher bist, zeige den konkreten Codeausschnitt aus dem Repo und begründe die Entscheidung.
+
+Start jetzt mit PHASE 1 und liefere die Umsetzung.

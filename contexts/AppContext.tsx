@@ -29,10 +29,10 @@ import type {
   Manufacturer,
   Filament as DomainFilament,
 } from "@/src/domain/models";
-import { SpoolRepository } from "@/src/data/repositories/SpoolRepository";
-import * as SyncService from "@/src/data/sync/SyncService";
 import { isPersistenceEnabled } from "@/src/data/db/client";
-import { CatalogService } from "@/src/features/catalog/CatalogService";
+import { CatalogUseCase } from "@/src/core/application/CatalogUseCase";
+import { SyncUseCase } from "@/src/core/application/SyncUseCase";
+import { SpoolUseCase } from "@/src/core/application/SpoolUseCase";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
 import {
@@ -219,14 +219,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (isPersistenceEnabled) {
           const [mfrs, fils] = await Promise.all([
-            CatalogService.loadManufacturers(),
-            CatalogService.loadFilaments(),
+            CatalogUseCase.loadManufacturers(),
+            CatalogUseCase.loadFilaments(),
           ]);
           setManufacturers(mfrs);
           setFilaments(fils);
 
           if (onboarded) {
-            const local = await SyncService.getLocalSpools();
+            const local = await SyncUseCase.getLocalSpools();
             setSpools(local.map(toViewSpool));
           }
         } else {
@@ -276,7 +276,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reloadLocalSpools = useCallback(async () => {
     if (!isPersistenceEnabled) return;
-    const local = await SyncService.getLocalSpools();
+    const local = await SyncUseCase.getLocalSpools();
     setSpools(local.map(toViewSpool));
   }, []);
 
@@ -294,8 +294,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSpoolsError(null);
 
     try {
-      const result = await SyncService.sync(serverUrl);
-      const local = await SyncService.getLocalSpools();
+      const result = await SyncUseCase.sync(serverUrl);
+      const local = await SyncUseCase.getLocalSpools();
       setSpools(local.map(toViewSpool));
 
       if (
@@ -315,7 +315,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const msg = err instanceof Error ? err.message : "Unknown sync error";
       setSpoolsError(msg);
       setIsOnline(false);
-      const local = await SyncService.getLocalSpools();
+      const local = await SyncUseCase.getLocalSpools();
       setSpools(local.map(toViewSpool));
     } finally {
       setIsSpoolsLoading(false);
@@ -343,7 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
 
       if (isPersistenceEnabled && spool._localId) {
-        SpoolRepository.setFavorite(spool._localId, next).catch(() => {
+        SpoolUseCase.setFavorite(spool._localId, next).catch(() => {
           setSpools((prev) =>
             prev.map((s) =>
               s.id === id ? { ...s, _isFavorite: !next } : s
@@ -383,10 +383,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next;
       });
 
-      await SpoolRepository.updateRemainingWeight(spool._localId, weight);
+      await SpoolUseCase.updateRemainingWeight(spool._localId, weight);
 
       if (serverUrl) {
-        SyncService.pushOne(serverUrl, spool._localId)
+        SyncUseCase.pushOne(serverUrl, spool._localId)
           .then(() => {
             setIsOnline(true);
             setDirtySpoolIds((prev) => {
@@ -406,8 +406,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const syncPending = useCallback(async () => {
     if (!serverUrl) return;
     try {
-      await SyncService.push(serverUrl);
-      const local = await SyncService.getLocalSpools();
+      await SyncUseCase.push(serverUrl);
+      const local = await SyncUseCase.getLocalSpools();
       setSpools(local.map(toViewSpool));
       setIsOnline(true);
     } catch {
@@ -441,8 +441,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const reloadCatalog = useCallback(async () => {
     if (!isPersistenceEnabled) return;
     const [mfrs, fils] = await Promise.all([
-      CatalogService.loadManufacturers(),
-      CatalogService.loadFilaments(),
+      CatalogUseCase.loadManufacturers(),
+      CatalogUseCase.loadFilaments(),
     ]);
     setManufacturers(mfrs);
     setFilaments(fils);
@@ -463,7 +463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return m;
       }
       try {
-        const m = await CatalogService.createManufacturer(data);
+        const m = await CatalogUseCase.createManufacturer(data);
         setManufacturers((prev) => [...prev, m]);
         return m;
       } catch {
@@ -492,7 +492,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return f;
       }
       try {
-        const f = await CatalogService.createFilament(data);
+        const f = await CatalogUseCase.createFilament(data);
         setFilaments((prev) => [...prev, f]);
         return f;
       } catch {
@@ -541,7 +541,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return true;
       }
       try {
-        await CatalogService.createSpool(data);
+        await CatalogUseCase.createSpool(data);
         await reloadLocalSpools();
         return true;
       } catch {
@@ -560,7 +560,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return true;
       }
       try {
-        await CatalogService.deleteManufacturer(localId);
+        await CatalogUseCase.deleteManufacturer(localId);
         setManufacturers((prev) =>
           prev.filter((m) => m.localId !== localId)
         );
@@ -581,7 +581,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return true;
       }
       try {
-        await CatalogService.deleteFilament(localId);
+        await CatalogUseCase.deleteFilament(localId);
         setFilaments((prev) =>
           prev.filter((f) => f.localId !== localId)
         );
@@ -602,7 +602,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return true;
       }
       try {
-        await CatalogService.deleteSpool(localId);
+        await CatalogUseCase.deleteSpool(localId);
         await reloadLocalSpools();
         return true;
       } catch {
