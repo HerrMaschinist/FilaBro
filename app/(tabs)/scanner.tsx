@@ -546,7 +546,7 @@ export default function ScannerScreen() {
   // ─── NFC mode ─────────────────────────────────────────────────────────────
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
-      <View style={[s.nfcContainer, { paddingTop: topPad + 8, paddingBottom: bottomPad }]}>
+      <View style={[s.nfcContainer, { paddingTop: topPad + 8, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 49 }]}>
         <Text style={[s.header, { color: colors.text }]}>{t("scanner.title")}</Text>
         {ModeSwitcher}
 

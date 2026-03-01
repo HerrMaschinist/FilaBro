@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { checkHealth } from "@/lib/spoolman";
 
-const DEFAULT_URL = "http://192.168.50.10:7912";
+const DEFAULT_URL = "http://192.168.XX.XX:7912";
 
 type CheckStatus = "idle" | "checking" | "ok" | "error";
 
