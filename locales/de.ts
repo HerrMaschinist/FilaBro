@@ -91,6 +91,14 @@ const de = {
     nfc_error_title: "NFC-Fehler",
     nfc_error_no_ndef:
       "Tag enthält keine NDEF-Nachricht. Stelle sicher, dass der Tag korrekt formatiert ist.",
+    spool_not_found_title: "Spule nicht gefunden",
+    spool_not_found_text: "Diese Spule existiert noch nicht.",
+    spool_create_locally: "Lokal anlegen",
+    spool_fetch_server: "Vom Server laden",
+    spool_cancel: "Abbrechen",
+    spool_created: "Spule wurde angelegt",
+    spool_fetch_failed: "Spule nicht auf Server gefunden.",
+    spool_no_server: "Kein Server konfiguriert.",
   },
   settings: {
     title: "Einstellungen",

@@ -90,6 +90,14 @@ const en = {
     nfc_error_title: "NFC Error",
     nfc_error_no_ndef:
       "Tag has no NDEF message. Ensure the tag is formatted correctly.",
+    spool_not_found_title: "Spool not found",
+    spool_not_found_text: "This spool does not exist yet.",
+    spool_create_locally: "Create locally",
+    spool_fetch_server: "Fetch from server",
+    spool_cancel: "Cancel",
+    spool_created: "Spool created",
+    spool_fetch_failed: "Spool not found on server.",
+    spool_no_server: "No server configured.",
   },
   settings: {
     title: "Settings",
