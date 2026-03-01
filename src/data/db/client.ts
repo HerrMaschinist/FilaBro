@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import * as schema from "./schema";
 
 const DB_NAME = "filabro.db";
-const CURRENT_SCHEMA_VERSION = 5;
+const CURRENT_SCHEMA_VERSION = 6;
 
 /**
  * Versioned SQL migrations.
@@ -150,6 +150,14 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
       `CREATE INDEX IF NOT EXISTS idx_spools_nfc_tag_id ON spools(nfc_tag_id)`,
       `CREATE INDEX IF NOT EXISTS idx_spools_last_modified_at ON spools(last_modified_at)`,
       `CREATE INDEX IF NOT EXISTS idx_filaments_manufacturer_local_id ON filaments(manufacturer_local_id)`,
+    ],
+  },
+  {
+    version: 6,
+    statements: [
+      // Phase 5.1A: purchase metadata fields on filaments (local-only, not synced to Spoolman)
+      `ALTER TABLE filaments ADD COLUMN paid_price REAL`,
+      `ALTER TABLE filaments ADD COLUMN shop TEXT`,
     ],
   },
 ];

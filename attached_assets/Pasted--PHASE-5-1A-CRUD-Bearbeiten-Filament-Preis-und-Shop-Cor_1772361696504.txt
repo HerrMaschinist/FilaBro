@@ -1,0 +1,132 @@
+# PHASE 5.1A – CRUD Bearbeiten + Filament Preis und Shop (Core + DB + UseCases)
+
+Du arbeitest im bestehenden FilaBro Repo (Expo React Native + SQLite + Drizzle + Hexagonal Core).
+Phase 5 (Performance & Scale) ist abgeschlossen und der Code baut clean.
+
+Jetzt implementierst Du Phase 5.1A:
+- Filament bearbeiten
+- Hersteller bearbeiten
+- Spule bearbeiten
+- Neue Felder am Filament: paidPrice und shop
+
+Fokus ist Systemdesign und Datenlayer, nicht UI.
+Keine UI Screens in dieser Phase, außer minimale Typanpassungen.
+
+Nicht verhandelbar
+1. Offline ist Quelle der Wahrheit.
+2. Keine Spoolman Kopplung in Domain.
+3. Inkrementell, buildbar nach jeder Änderung.
+4. Konkrete Dateipfade, kompletter Inhalt oder Diff pro Datei.
+5. Migration ohne Datenverlust.
+6. TypeScript muss am Ende 0 Fehler haben.
+
+## Ziele im Detail
+
+## 1) Domain erweitern (Core Domain)
+Erweitere Filament Domain Modell um:
+- paidPrice?: number   // Betrag als Dezimalzahl in Währungseinheit (z.B. 19.99)
+- shop?: string        // Freitext oder später referenzierbar
+
+Wichtig:
+- Keine Währungslogik in Domain.
+- Optional, darf leer sein.
+
+Dateien:
+- /src/core/domain/filament.ts (oder wo Filament liegt)
+- /src/core/domain/index.ts falls nötig
+
+## 2) DB Schema Migration v6
+Erweitere die Tabelle filaments um:
+- paid_price REAL NULL
+- shop TEXT NULL
+
+Falls Hersteller oder Spule Edit weitere Felder brauchen: keine neuen Felder, nur Update Support.
+
+Update:
+- /src/data/db/schema.ts
+- /src/data/db/client.ts
+- Schema Version hochsetzen (v6)
+- Additive Migration, kein Drop, kein Reset.
+
+Indizes nicht ändern, außer falls zwingend.
+
+## 3) Repositories: Update Methoden hinzufügen
+Implementiere Update Methoden, ohne Side Effects:
+
+### FilamentRepository
+- updateLocal(localId, patch)
+Patch erlaubt:
+- name?
+- material?
+- color?
+- manufacturerLocalId?
+- paidPrice?
+- shop?
+
+Regeln:
+- Null aus DB wird im Domain Mapping zu undefined.
+- Update setzt lastModifiedAt oder updatedAt falls vorhanden.
+- Update markiert syncState dirty und dirtyFields korrekt.
+  DirtyFields sind string[] im SyncRecord Kontext, nicht im Domain Objekt.
+
+### ManufacturerRepository
+- updateLocal(localId, patch)
+Patch erlaubt:
+- name?
+- note? (nur falls vorhanden)
+- sonst minimal
+
+### SpoolRepository
+- updateLocal(localId, patch)
+Patch erlaubt:
+- displayName?
+- archived?
+- isFavorite?
+- qrCode?
+- nfcTagId?
+- lotNr?
+- spoolWeight?
+- initialWeight?
+- comment?
+
+Wichtig:
+- remainingWeight kommt aus spool_stats und usage_events, nicht direkt in spools.
+- Wenn Spule editiert wird und initialWeight oder spoolWeight verändert wird:
+  keine automatische Neuberechnung von remainingWeight in dieser Phase.
+  Nur speichern und dirty markieren.
+
+## 4) Ports erweitern
+Update:
+- /src/core/ports/index.ts
+
+Füge Update Methoden hinzu:
+- IFilamentRepository.updateLocal
+- IManufacturerRepository.updateLocal
+- ISpoolRepository.updateLocal
+
+Patch Typen definieren, keine any.
+
+## 5) Application UseCases
+Erstelle oder erweitere UseCases:
+
+- /src/core/application/FilamentUseCase.ts
+  - updateFilament(localId, patch)
+- /src/core/application/ManufacturerUseCase.ts
+  - updateManufacturer(localId, patch)
+- /src/core/application/SpoolEditUseCase.ts oder SpoolUseCase erweitern
+  - updateSpool(localId, patch)
+
+UseCases rufen nur Ports auf.
+Keine DB Imports.
+
+## 6) Adapter wiring
+Wenn ihr schon adapters/sqlite index re-exports habt:
+- exportiere die neuen Update Methoden automatisch über die Repos.
+Falls DI vorhanden, entsprechend anbinden.
+
+## 7) Verifikation
+Am Ende ausführen und Ergebnis berichten:
+
+1) TypeScript:
+```bash
+npx tsc --noEmit

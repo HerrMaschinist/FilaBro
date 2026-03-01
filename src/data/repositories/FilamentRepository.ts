@@ -36,6 +36,8 @@ function toFilamentRecord(row: typeof filaments.$inferSelect): FilamentRecord {
     printTempMax: row.printTempMax ?? undefined,
     density: row.density ?? undefined,
     comment: row.comment ?? undefined,
+    paidPrice: row.paidPrice ?? undefined,
+    shop: row.shop ?? undefined,
     lastModifiedAt: row.lastModifiedAt,
     syncState: row.syncState,
   };
@@ -56,6 +58,8 @@ function toFilament(row: typeof filaments.$inferSelect): Filament {
     printTempMax: row.printTempMax ?? undefined,
     density: row.density ?? undefined,
     comment: row.comment ?? undefined,
+    paidPrice: row.paidPrice ?? undefined,
+    shop: row.shop ?? undefined,
     lastModifiedAt: row.lastModifiedAt,
   };
 }
@@ -161,6 +165,8 @@ export const FilamentRepository = {
       weight?: number;
       spoolWeight?: number;
       comment?: string;
+      paidPrice?: number;
+      shop?: string;
     }
   ): Promise<Filament | null> {
     const rows = await getDb()
@@ -183,6 +189,8 @@ export const FilamentRepository = {
     if (data.weight !== undefined) payload.weight = data.weight;
     if (data.spoolWeight !== undefined) payload.spoolWeight = data.spoolWeight;
     if (data.comment !== undefined) payload.comment = data.comment;
+    if (data.paidPrice !== undefined) payload.paidPrice = data.paidPrice;
+    if (data.shop !== undefined) payload.shop = data.shop || null;
 
     await getDb()
       .update(filaments)
@@ -207,6 +215,10 @@ export const FilamentRepository = {
         data.spoolWeight !== undefined ? data.spoolWeight : existing.spoolWeight,
       comment:
         data.comment !== undefined ? data.comment || undefined : existing.comment,
+      paidPrice:
+        data.paidPrice !== undefined ? data.paidPrice : existing.paidPrice,
+      shop:
+        data.shop !== undefined ? data.shop || undefined : existing.shop,
       lastModifiedAt: now,
     };
   },

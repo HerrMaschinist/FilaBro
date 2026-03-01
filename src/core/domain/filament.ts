@@ -18,5 +18,9 @@ export interface Filament {
   printTempMax?: number;
   density?: number;
   comment?: string;
+  /** Amount paid for this filament spool in the user's currency. Local-only, not synced to Spoolman. */
+  paidPrice?: number;
+  /** Shop or vendor where this filament was purchased. Local-only, not synced to Spoolman. */
+  shop?: string;
   lastModifiedAt: number;
 }

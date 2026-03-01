@@ -33,6 +33,10 @@ export const filaments = sqliteTable("filaments", {
   printTempMax: integer("print_temp_max"),
   density: real("density"),
   comment: text("comment"),
+  /** Amount paid — local-only, never synced to Spoolman. */
+  paidPrice: real("paid_price"),
+  /** Shop/vendor name — local-only, never synced to Spoolman. */
+  shop: text("shop"),
   syncState: text("sync_state").notNull().default("synced"),
   lastModifiedAt: integer("last_modified_at").notNull(),
 });

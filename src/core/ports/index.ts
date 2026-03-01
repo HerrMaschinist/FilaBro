@@ -49,6 +49,18 @@ export interface UpsertSpoolFromRemoteInput {
   registered?: string;
 }
 
+export interface UpdateSpoolPatch {
+  displayName?: string;
+  archived?: boolean;
+  isFavorite?: boolean;
+  qrCode?: string;
+  nfcTagId?: string;
+  lotNr?: string;
+  spoolWeight?: number;
+  initialWeight?: number;
+  comment?: string;
+}
+
 export interface ISpoolRepository {
   getAll(): Promise<Spool[]>;
   /** JOIN-based — no N+1. Loads all spools with filament/manufacturer hydrated. */
@@ -66,6 +78,8 @@ export interface ISpoolRepository {
   findByNfcTagId(tagId: string): Promise<SpoolView | null>;
   createLocal(data: CreateSpoolInput): Promise<Spool>;
   upsertFromRemote(data: UpsertSpoolFromRemoteInput): Promise<Spool>;
+  /** Apply a partial local edit. Marks record dirty and bumps localVersion. */
+  updateLocal(localId: string, patch: UpdateSpoolPatch): Promise<Spool | null>;
   setFavorite(localId: string, isFavorite: boolean): Promise<void>;
   markSynced(localId: string): Promise<void>;
   deleteByLocalId(localId: string): Promise<boolean>;
@@ -73,6 +87,18 @@ export interface ISpoolRepository {
 }
 
 // ─── Filament Repository ──────────────────────────────────────────────────────
+
+export interface UpdateFilamentPatch {
+  name?: string;
+  material?: string;
+  colorHex?: string;
+  manufacturerLocalId?: string;
+  weight?: number;
+  spoolWeight?: number;
+  comment?: string;
+  paidPrice?: number;
+  shop?: string;
+}
 
 export interface CreateFilamentInput {
   name: string;
@@ -107,6 +133,8 @@ export interface IFilamentRepository {
   /** Batch fetch: Map<remoteId, {localId, syncState}>. One query for all ids. */
   getMapByRemoteIds(remoteIds: number[]): Promise<Map<number, { localId: string; syncState: string }>>;
   createLocal(data: CreateFilamentInput): Promise<Filament>;
+  /** Apply a partial local edit. Marks record dirty. paidPrice and shop are local-only. */
+  updateLocal(localId: string, patch: UpdateFilamentPatch): Promise<Filament | null>;
   upsertFromRemote(data: UpsertFilamentFromRemoteInput): Promise<Filament>;
   /** Batch upsert: items with localId → UPDATE; items without → INSERT. One round-trip. */
   upsertManyFromRemote(items: BatchUpsertFilamentInput[]): Promise<void>;
@@ -115,6 +143,12 @@ export interface IFilamentRepository {
 }
 
 // ─── Manufacturer Repository ──────────────────────────────────────────────────
+
+export interface UpdateManufacturerPatch {
+  name?: string;
+  website?: string;
+  comment?: string;
+}
 
 export interface CreateManufacturerInput {
   name: string;
@@ -141,6 +175,8 @@ export interface IManufacturerRepository {
   /** Batch fetch: Map<remoteId, {localId, syncState}>. One query for all ids. */
   getMapByRemoteIds(remoteIds: number[]): Promise<Map<number, { localId: string; syncState: string }>>;
   createLocal(data: CreateManufacturerInput): Promise<Manufacturer>;
+  /** Apply a partial local edit. Marks record dirty. */
+  updateLocal(localId: string, patch: UpdateManufacturerPatch): Promise<Manufacturer | null>;
   upsertFromRemote(data: UpsertManufacturerFromRemoteInput): Promise<Manufacturer>;
   /** Batch upsert: items with localId → UPDATE; items without → INSERT. */
   upsertManyFromRemote(items: BatchUpsertManufacturerInput[]): Promise<void>;

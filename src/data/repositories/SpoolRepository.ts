@@ -153,6 +153,8 @@ const JOIN_SELECT = {
   f_printTempMax: filaments.printTempMax,
   f_density: filaments.density,
   f_comment: filaments.comment,
+  f_paidPrice: filaments.paidPrice,
+  f_shop: filaments.shop,
   f_lastModifiedAt: filaments.lastModifiedAt,
   m_localId: manufacturers.localId,
   m_remoteId: manufacturers.remoteId,
@@ -194,6 +196,8 @@ type JoinRow = {
   f_printTempMax: number | null;
   f_density: number | null;
   f_comment: string | null;
+  f_paidPrice: number | null;
+  f_shop: string | null;
   f_lastModifiedAt: number | null;
   m_localId: string | null;
   m_remoteId: number | null;
@@ -241,6 +245,8 @@ function rowToSpoolView(row: JoinRow): SpoolView {
       printTempMax: row.f_printTempMax ?? undefined,
       density: row.f_density ?? undefined,
       comment: row.f_comment ?? undefined,
+      paidPrice: row.f_paidPrice ?? undefined,
+      shop: row.f_shop ?? undefined,
       lastModifiedAt: row.f_lastModifiedAt!,
       manufacturer,
     };
@@ -676,6 +682,116 @@ export const SpoolRepository = {
       .update(spools)
       .set({ isFavorite: isFavorite ? 1 : 0 })
       .where(eq(spools.localId, localId));
+  },
+
+  /**
+   * Apply a partial update to a locally-created or locally-edited spool.
+   * Marks the record dirty and bumps localVersion so SyncUseCase can push it.
+   * remainingWeight is NOT part of this patch — use WeightUseCase for that.
+   */
+  async updateLocal(
+    localId: string,
+    data: {
+      displayName?: string;
+      archived?: boolean;
+      isFavorite?: boolean;
+      qrCode?: string;
+      nfcTagId?: string;
+      lotNr?: string;
+      spoolWeight?: number;
+      initialWeight?: number;
+      comment?: string;
+    }
+  ): Promise<Spool | null> {
+    const rows = await getDb()
+      .select()
+      .from(spools)
+      .where(eq(spools.localId, localId))
+      .limit(1);
+    if (!rows[0]) return null;
+
+    const existing = rows[0];
+    const now = Date.now();
+    const payload: Record<string, unknown> = {
+      lastModifiedAt: now,
+      localVersion: existing.localVersion + 1,
+    };
+
+    if (existing.syncState === "synced" || existing.syncState === "conflict") {
+      payload.syncState = "dirty";
+    }
+
+    const changedFields: string[] = [];
+    if (data.displayName !== undefined) {
+      payload.displayName = data.displayName || null;
+      changedFields.push("display_name");
+    }
+    if (data.archived !== undefined) {
+      payload.archived = data.archived ? 1 : 0;
+      changedFields.push("archived");
+    }
+    if (data.isFavorite !== undefined) {
+      payload.isFavorite = data.isFavorite ? 1 : 0;
+    }
+    if (data.qrCode !== undefined) {
+      payload.qrCode = data.qrCode || null;
+      changedFields.push("qr_code");
+    }
+    if (data.nfcTagId !== undefined) {
+      payload.nfcTagId = data.nfcTagId || null;
+      changedFields.push("nfc_tag_id");
+    }
+    if (data.lotNr !== undefined) {
+      payload.lotNr = data.lotNr || null;
+      changedFields.push("lot_nr");
+    }
+    if (data.spoolWeight !== undefined) {
+      payload.spoolWeight = data.spoolWeight;
+      changedFields.push("spool_weight");
+    }
+    if (data.initialWeight !== undefined) {
+      payload.initialWeight = data.initialWeight;
+      changedFields.push("initial_weight");
+    }
+    if (data.comment !== undefined) {
+      payload.comment = data.comment || null;
+      changedFields.push("comment");
+    }
+
+    let existingDirtyFields: string[] = [];
+    if (existing.dirtyFields) {
+      try {
+        existingDirtyFields = JSON.parse(existing.dirtyFields) as string[];
+      } catch {
+        existingDirtyFields = [];
+      }
+    }
+    const mergedDirtyFields = Array.from(
+      new Set([...existingDirtyFields, ...changedFields])
+    );
+    if (mergedDirtyFields.length > 0) {
+      payload.dirtyFields = JSON.stringify(mergedDirtyFields);
+    }
+
+    await getDb()
+      .update(spools)
+      .set(payload)
+      .where(eq(spools.localId, localId));
+
+    return toSpool({
+      ...existing,
+      localVersion: existing.localVersion + 1,
+      lastModifiedAt: now,
+      displayName: data.displayName !== undefined ? (data.displayName || null) : existing.displayName,
+      archived: data.archived !== undefined ? (data.archived ? 1 : 0) : existing.archived,
+      isFavorite: data.isFavorite !== undefined ? (data.isFavorite ? 1 : 0) : existing.isFavorite,
+      qrCode: data.qrCode !== undefined ? (data.qrCode || null) : existing.qrCode,
+      nfcTagId: data.nfcTagId !== undefined ? (data.nfcTagId || null) : existing.nfcTagId,
+      lotNr: data.lotNr !== undefined ? (data.lotNr || null) : existing.lotNr,
+      spoolWeight: data.spoolWeight !== undefined ? data.spoolWeight : existing.spoolWeight,
+      initialWeight: data.initialWeight !== undefined ? data.initialWeight : existing.initialWeight,
+      comment: data.comment !== undefined ? (data.comment || null) : existing.comment,
+    });
   },
 
   async markSynced(localId: string): Promise<void> {
