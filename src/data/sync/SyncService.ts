@@ -185,7 +185,13 @@ export async function push(baseUrl: string): Promise<SyncResult> {
 
   for (const spool of dirtySpools) {
     if (!spool.remoteId) {
-      log(`  skip spool ${spool.localId} — no remoteId (local-only, not supported yet)`);
+      console.log("[SYNC PUSH] skip", {
+        localId: spool.localId,
+        remoteId: null,
+        reason: "no_remote_id",
+        syncState: spool.syncState,
+        dirtyFields: spool.dirtyFields,
+      });
       continue;
     }
 
@@ -198,13 +204,45 @@ export async function push(baseUrl: string): Promise<SyncResult> {
         const statsWeight = await SpoolStatsRepository.getRemainingWeight(spool.localId);
         const remainingToSend = statsWeight ?? spool.remainingWeight;
 
-        if (remainingToSend !== undefined) {
-          log(`  PATCH spool remoteId=${spool.remoteId} remaining_weight=${remainingToSend} (from ${statsWeight !== undefined ? "spool_stats" : "spools"})`);
-          await SpoolmanClient.patchSpool(baseUrl, spool.remoteId, {
-            remaining_weight: remainingToSend,
+        if (remainingToSend === undefined) {
+          console.log("[SYNC PUSH] skip", {
+            localId: spool.localId,
+            remoteId: spool.remoteId,
+            reason: "remaining_weight_undefined",
+            syncState: spool.syncState,
+            dirtyFields: dirty,
+          });
+        } else {
+          const payload = { remaining_weight: remainingToSend };
+          console.log("[SYNC PUSH] sending", {
+            remoteId: spool.remoteId,
+            source: statsWeight !== undefined ? "spool_stats" : "spools_legacy",
+            payload,
+          });
+
+          const patchResp = await SpoolmanClient.patchSpool(
+            baseUrl,
+            spool.remoteId,
+            payload
+          );
+
+          console.log("[SYNC PUSH] response", {
+            remoteId: spool.remoteId,
+            status: 200,
+            remaining_weight: patchResp.remaining_weight,
+            body: JSON.stringify(patchResp).slice(0, 400),
           });
         }
+      } else {
+        console.log("[SYNC PUSH] skip", {
+          localId: spool.localId,
+          remoteId: spool.remoteId,
+          reason: "remaining_weight_not_in_dirty_fields",
+          syncState: spool.syncState,
+          dirtyFields: dirty,
+        });
       }
+
       await SpoolRepository.markSynced(spool.localId);
 
       // Close any open conflict for this spool — local changes were pushed successfully
@@ -219,6 +257,11 @@ export async function push(baseUrl: string): Promise<SyncResult> {
       log(`  ✓ spool remoteId=${spool.remoteId} pushed`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.log("[SYNC PUSH] response", {
+        remoteId: spool.remoteId,
+        status: "error",
+        error: msg,
+      });
       log(`  ✗ spool remoteId=${spool.remoteId} push failed: ${msg}`);
       result.errors.push(`Spool ${spool.remoteId}: ${msg}`);
     }
@@ -258,21 +301,65 @@ export async function pushOne(
   localId: string
 ): Promise<void> {
   const record = await SpoolRepository.getRecordByLocalId(localId);
-  if (!record || !record.remoteId) return;
-  if (record.syncState !== "pending_push" && record.syncState !== "dirty") return;
+
+  if (!record || !record.remoteId) {
+    console.log("[SYNC PUSH] skip", {
+      localId,
+      remoteId: record?.remoteId ?? null,
+      reason: !record ? "record_not_found" : "no_remote_id",
+      syncState: record?.syncState,
+      dirtyFields: record?.dirtyFields ?? [],
+    });
+    return;
+  }
+
+  if (record.syncState !== "pending_push" && record.syncState !== "dirty") {
+    console.log("[SYNC PUSH] skip", {
+      localId,
+      remoteId: record.remoteId,
+      reason: "sync_state_not_dirty",
+      syncState: record.syncState,
+      dirtyFields: record.dirtyFields,
+    });
+    return;
+  }
 
   // Phase 4: prefer spool_stats projection over legacy column
   const statsWeight = await SpoolStatsRepository.getRemainingWeight(localId);
   const remainingToSend = statsWeight ?? record.remainingWeight;
 
-  log(`pushOne remoteId=${record.remoteId} remaining=${remainingToSend} (from ${statsWeight !== undefined ? "spool_stats" : "spools"})`);
+  if (remainingToSend === undefined) {
+    console.log("[SYNC PUSH] skip", {
+      localId,
+      remoteId: record.remoteId,
+      reason: "remaining_weight_undefined",
+      syncState: record.syncState,
+      dirtyFields: record.dirtyFields,
+    });
+    return;
+  }
+
+  const payload = { remaining_weight: remainingToSend };
+  console.log("[SYNC PUSH] sending", {
+    remoteId: record.remoteId,
+    source: statsWeight !== undefined ? "spool_stats" : "spools_legacy",
+    payload,
+  });
 
   try {
-    if (remainingToSend !== undefined) {
-      await SpoolmanClient.patchSpool(baseUrl, record.remoteId, {
-        remaining_weight: remainingToSend,
-      });
-    }
+    const patchResp = await SpoolmanClient.patchSpool(
+      baseUrl,
+      record.remoteId,
+      payload
+    );
+
+    console.log("[SYNC PUSH] response", {
+      remoteId: record.remoteId,
+      status: 200,
+      remaining_weight: patchResp.remaining_weight,
+      body: JSON.stringify(patchResp).slice(0, 400),
+    });
+
     await SpoolRepository.markSynced(record.localId);
 
     // Close any open conflict — local was pushed successfully
@@ -286,6 +373,11 @@ export async function pushOne(
     log(`  ✓ pushOne done`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.log("[SYNC PUSH] response", {
+      remoteId: record.remoteId,
+      status: "error",
+      error: msg,
+    });
     log(`  ✗ pushOne failed, will retry on next sync: ${msg}`);
   }
 }

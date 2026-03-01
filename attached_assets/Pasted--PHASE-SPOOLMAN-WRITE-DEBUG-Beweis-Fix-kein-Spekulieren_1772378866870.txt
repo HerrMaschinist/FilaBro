@@ -1,0 +1,162 @@
+# PHASE SPOOLMAN WRITE DEBUG – Beweis + Fix (kein Spekulieren)
+
+Kontext:
+Die Verbindung zu Spoolman funktioniert.
+Aber Änderungen (z. B. remaining_weight) werden offenbar nicht persistiert.
+
+Ziel:
+1. Beweisen, ob Spoolman PATCH korrekt funktioniert.
+2. Beweisen, ob FilaBro überhaupt korrekt pusht.
+3. Falls nein → minimalen Fix implementieren.
+4. Keine Architekturänderung.
+5. Kein Refactor.
+6. Nur Debug + gezielter Patch.
+
+Wichtig:
+Nicht raten.
+Nicht interpretieren.
+Logs + reproduzierbarer Test.
+
+------------------------------------------------------------
+SCHRITT 1 – Direkter API Test gegen Spoolman
+------------------------------------------------------------
+
+Erstelle Script:
+scripts/spoolman_patch_probe.sh
+
+Inhalt:
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${BASE:-}" ] || [ -z "${ID:-}" ]; then
+  echo "Usage:"
+  echo "BASE=http://host:port ID=123 ./scripts/spoolman_patch_probe.sh"
+  exit 1
+fi
+
+echo "### BEFORE"
+curl -sS "$BASE/api/v1/spool/$ID" | head -c 800; echo
+echo
+
+echo "### PATCH"
+curl -sS -X PATCH "$BASE/api/v1/spool/$ID" \
+  -H "Content-Type: application/json" \
+  -d '{"remaining_weight": 777}' | head -c 800; echo
+echo
+
+echo "### AFTER"
+curl -sS "$BASE/api/v1/spool/$ID" | head -c 800; echo
+echo
+
+echo "Done."
+
+Mach das Script ausführbar:
+chmod +x scripts/spoolman_patch_probe.sh
+
+NICHT automatisch ausführen.
+Nur bereitstellen.
+
+------------------------------------------------------------
+SCHRITT 2 – SyncService Push Instrumentation
+------------------------------------------------------------
+
+In:
+src/data/sync/SyncService.ts
+
+Füge temporär Logging ein:
+
+Vor jedem early return im Push Pfad:
+
+console.log("[SYNC PUSH] skip", {
+  localId,
+  remoteId,
+  syncState,
+  dirtyFields
+})
+
+Vor dem HTTP Request:
+
+console.log("[SYNC PUSH] sending", {
+  remoteId,
+  payload
+})
+
+Nach dem HTTP Response:
+
+console.log("[SYNC PUSH] response", {
+  status: response.status,
+  body: truncatedBody
+})
+
+Wichtig:
+Nur Debug Logging.
+Kein Refactor.
+
+------------------------------------------------------------
+SCHRITT 3 – Prüfen, wo remaining_weight herkommt
+------------------------------------------------------------
+
+Im Push Pfad sicherstellen:
+
+Wenn Gewicht gepusht wird,
+muss es aus spool_stats.remaining_weight kommen,
+nicht aus legacy spools.remaining_weight.
+
+Falls falsche Quelle:
+Minimal fix:
+Payload bauen mit Wert aus SpoolStatsRepository.
+
+------------------------------------------------------------
+SCHRITT 4 – Feldname verifizieren
+------------------------------------------------------------
+
+Im SpoolmanClient prüfen:
+
+Wie heißt das Feld genau?
+remaining_weight?
+remainingWeight?
+remainingWeightG?
+
+Keine Annahmen.
+Anhand API oder bestehendem Code prüfen.
+
+Falls Feld falsch:
+Nur Adapter korrigieren.
+Nicht Domain ändern.
+
+------------------------------------------------------------
+SCHRITT 5 – Verifikation
+------------------------------------------------------------
+
+1) TypeScript:
+npx tsc --noEmit
+
+2) App neu starten:
+npx expo start -c
+
+3) Manuell testen:
+- Gewicht lokal ändern
+- Sync auslösen
+- Logs prüfen
+- Spoolman GET prüfen
+
+------------------------------------------------------------
+ERWARTETES ERGEBNIS
+------------------------------------------------------------
+
+Es muss eindeutig eine der beiden Aussagen möglich sein:
+
+A) Spoolman PATCH funktioniert nicht (Script zeigt keine Änderung)
+→ Dann liegt Problem serverseitig.
+
+oder
+
+B) Spoolman PATCH funktioniert
+→ Dann liegt Problem im Push Pfad.
+→ Fix implementieren.
+→ Logs zeigen erfolgreichen PATCH.
+→ GET zeigt persistierte Änderung.
+
+Keine Spekulation.
+Nur Beweis.
