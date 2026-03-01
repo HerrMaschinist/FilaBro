@@ -1,0 +1,244 @@
+# REPAIR + PHASE 5.2 – FlatList Key Fix + Filament Spec + Farb-Normalisierung
+
+Kontext:
+Phase 5.1B ist umgesetzt.
+Phase 5.2 wurde NICHT korrekt implementiert.
+Zusätzlich existiert ein React Fehler:
+
+Encountered two children with the same key "$0"
+
+Wir machen jetzt zwei Dinge:
+
+1. FlatList Key Problem sauber beheben
+2. Phase 5.2 vollständig, korrekt und inkrementell implementieren
+
+Wichtig:
+Nicht teilweise.
+Nicht blind.
+Erst lesen.
+Dann strukturiert umsetzen.
+
+------------------------------------------------------------
+TEIL A – FlatList Key Fehler beheben
+------------------------------------------------------------
+
+1. Suche die Spulenliste:
+   index.tsx oder app/(tabs)/index.tsx
+
+2. Finde die FlatList.
+
+3. Prüfe den keyExtractor.
+
+Aktuell ist er vermutlich:
+   keyExtractor={(item) => String(item.id)}
+
+Das ist falsch.
+
+Ersetze durch:
+
+   keyExtractor={(item) => item._localId ?? item.localId}
+
+Falls _localId nicht existiert:
+   keyExtractor={(item) => item.localId}
+
+Regeln:
+- Kein Index als Key
+- Kein remoteId
+- Kein String(item.id)
+- Nur stabile lokale Identität
+
+Nach Änderung:
+npx tsc --noEmit muss 0 Fehler haben.
+
+------------------------------------------------------------
+TEIL B – PHASE 5.2 RICHTIG IMPLEMENTIEREN
+Filament Spec + Farbe Normalisierung
+------------------------------------------------------------
+
+Ziel:
+Filament bekommt:
+- Durchmesser
+- Drucktemperatur
+- Heizbett Temperatur
+- Robuste Farbverarbeitung:
+    Eingabe kann Name ODER Hex sein
+    Bekannte Farben werden normalisiert
+    Keine unsichere Guess-Logik
+
+------------------------------------------------------------
+SCHRITT 1 – DOMAIN ERWEITERN
+------------------------------------------------------------
+
+Datei:
+src/core/domain/filament.ts
+
+Erweitere Filament um:
+
+interface FilamentSpec {
+  diameterMm?: number
+  printTempCMin?: number
+  printTempCMax?: number
+  bedTempCMin?: number
+  bedTempCMax?: number
+}
+
+In Filament:
+
+spec?: FilamentSpec
+
+Farb-Felder:
+
+colorNameRaw?: string
+colorNameNormalized?: string
+colorHexNormalized?: string
+
+Wichtig:
+Domain bleibt rein.
+Keine Infrastruktur Imports.
+
+------------------------------------------------------------
+SCHRITT 2 – DB MIGRATION v7
+------------------------------------------------------------
+
+schema.ts:
+Filaments Tabelle erweitern um:
+
+diameter_mm REAL
+print_temp_c_min INTEGER
+print_temp_c_max INTEGER
+bed_temp_c_min INTEGER
+bed_temp_c_max INTEGER
+color_name_raw TEXT
+color_name_norm TEXT
+color_hex_norm TEXT
+
+client.ts:
+Schema Version +1 erhöhen.
+Additive ALTER TABLE Statements.
+Kein Drop.
+Kein Reset.
+
+Falls legacy color_hex existiert:
+Wenn color_hex_norm NULL ist → kopiere color_hex nach color_hex_norm.
+
+------------------------------------------------------------
+SCHRITT 3 – PORTS + REPO PATCH
+------------------------------------------------------------
+
+UpdateFilamentPatch erweitern um:
+
+spec?: Partial<FilamentSpec>
+colorInput?: string
+
+FilamentRepository:
+
+- Mapper: null → undefined
+- updateLocal:
+    Wenn patch.spec gesetzt → einzelne Felder schreiben
+    Wenn patch.colorInput gesetzt:
+        → Normalisierung NICHT hier
+        → nur vorbereitete Felder schreiben
+
+DirtyFields sauber tracken.
+
+------------------------------------------------------------
+SCHRITT 4 – COLOR NORMALIZER (Application Layer!)
+------------------------------------------------------------
+
+Neue Datei:
+src/core/application/filament/ColorNormalizer.ts
+
+Regeln:
+
+Input trim + lowercase
+
+Wenn Pattern ^#?[0-9A-Fa-f]{6}$:
+    normalize to #RRGGBB
+    return:
+        colorHexNormalized
+        kein Name gesetzt
+
+Wenn Text:
+Alias Tabelle:
+
+schwarz, black → Black + #000000
+weiß, weiss, white → White + #FFFFFF
+grau, gray, grey → Gray + #808080
+rot, red → Red + #FF0000
+grün, green → Green + #00FF00
+blau, blue → Blue + #0000FF
+gelb, yellow → Yellow + #FFFF00
+orange → Orange + #FFA500
+lila, purple → Purple + #800080
+pink → Pink + #FFC0CB
+braun, brown → Brown + #8B4513
+
+Wenn kein Match:
+    colorNameRaw = original
+    normalized + hex bleiben undefined
+
+------------------------------------------------------------
+SCHRITT 5 – FilamentUseCase UPDATE
+------------------------------------------------------------
+
+updateFilament():
+
+Wenn patch.colorInput gesetzt:
+    → ColorNormalizer aufrufen
+    → final patch Felder setzen:
+        colorNameRaw
+        colorNameNormalized
+        colorHexNormalized
+
+spec Felder übernehmen
+
+Dann repo.updateLocal()
+
+------------------------------------------------------------
+SCHRITT 6 – UI EDIT FILAMENT ANPASSEN
+------------------------------------------------------------
+
+Filament Edit Screen:
+
+Ersetze reines Hex Feld durch:
+
+TextInput:
+Label: "Farbe"
+Placeholder: "z.B. schwarz oder #ffffff"
+
+Neue Felder:
+- Durchmesser
+- Drucktemp Min
+- Drucktemp Max
+- Bett Temp Min
+- Bett Temp Max
+
+Speichern:
+updateFilament(localId, {
+    colorInput: textFieldValue,
+    spec: { ... }
+})
+
+Anzeige:
+Zeige:
+colorNameNormalized
+sonst colorNameRaw
+sonst colorHexNormalized
+
+------------------------------------------------------------
+ABSCHLUSS PRÜFUNGEN
+------------------------------------------------------------
+
+1) TypeScript:
+npx tsc --noEmit
+
+2) FlatList Key Fehler darf NICHT mehr auftreten
+
+3) App Neustart:
+npx expo start -c
+
+4) Manuell:
+- Filament bearbeiten
+- Farbe "weiß" → Anzeige White
+- Farbe "#000000" → Hex gespeichert
+- Durchmesser 1.75 → bleibt persistent
