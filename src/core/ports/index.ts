@@ -258,9 +258,13 @@ export interface ISpoolStatsRepository {
   ): Promise<Map<string, number>>;
 }
 
-// ─── External Filament System Port (Spoolman adapter contract) ────────────────
+// ─── External Filament System Port — backend-neutral DTOs ────────────────────
+//
+// All field names are camelCase and carry no Spoolman-specific naming.
+// Concrete adapters (SpoolmanAdapter, future FilaBroAdapter, …) are
+// responsible for translating between their native API shape and these types.
 
-export interface RemoteVendorDTO {
+export interface RemoteManufacturerDTO {
   id: number;
   name: string;
   comment?: string;
@@ -270,39 +274,42 @@ export interface RemoteFilamentDTO {
   id: number;
   name: string;
   material: string;
-  color_hex?: string;
-  vendor?: RemoteVendorDTO;
+  colorHex?: string;
+  manufacturer?: RemoteManufacturerDTO;
   weight?: number;
-  spool_weight?: number;
+  spoolWeight?: number;
   comment?: string;
 }
 
 export interface RemoteSpoolDTO {
   id: number;
   filament: RemoteFilamentDTO;
-  remaining_weight?: number;
-  initial_weight?: number;
-  spool_weight?: number;
-  used_weight?: number;
+  remainingWeight?: number;
+  initialWeight?: number;
+  spoolWeight?: number;
+  usedWeight?: number;
   comment?: string;
   archived?: boolean;
-  lot_nr?: string;
-  last_used?: string;
-  first_used?: string;
-  registered?: string;
+  lotNumber?: string;
+  lastUsed?: string;
+  firstUsed?: string;
+  registeredAt?: string;
 }
 
 export interface SpoolPatchDTO {
-  remaining_weight?: number;
+  remainingWeight?: number;
 }
 
 export interface IExternalFilamentSystemPort {
   healthCheck(baseUrl: string): Promise<{ status: string }>;
-  getSpools(baseUrl: string): Promise<RemoteSpoolDTO[]>;
+  getManufacturers(baseUrl: string): Promise<RemoteManufacturerDTO[]>;
   getFilaments(baseUrl: string): Promise<RemoteFilamentDTO[]>;
-  getVendors(baseUrl: string): Promise<RemoteVendorDTO[]>;
+  getSpools(baseUrl: string): Promise<RemoteSpoolDTO[]>;
   patchSpool(baseUrl: string, remoteId: number, patch: SpoolPatchDTO): Promise<void>;
 }
+
+/** @deprecated Use RemoteManufacturerDTO */
+export type RemoteVendorDTO = RemoteManufacturerDTO;
 
 // ─── Sync Result ──────────────────────────────────────────────────────────────
 

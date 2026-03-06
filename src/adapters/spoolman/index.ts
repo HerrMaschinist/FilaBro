@@ -2,8 +2,15 @@
  * src/adapters/spoolman/index.ts
  *
  * Concrete implementation of IExternalFilamentSystemPort backed by the
- * Spoolman REST API. This is the only place in the codebase that is
- * allowed to import SpoolmanClient directly.
+ * Spoolman REST API.
+ *
+ * This is the ONLY place in the codebase allowed to import SpoolmanClient
+ * or reference Spoolman-specific snake_case field names.
+ *
+ * Responsibilities:
+ *   - Call SpoolmanClient (raw HTTP)
+ *   - Translate Spoolman API shapes → backend-neutral port DTOs (camelCase)
+ *   - Translate neutral patch DTOs → Spoolman API payloads (snake_case)
  *
  * SyncUseCase depends on IExternalFilamentSystemPort, not on this file.
  * Swap this adapter for any other backend without touching the use case.
@@ -11,9 +18,9 @@
 import * as SpoolmanClient from "@/src/data/api/SpoolmanClient";
 import type {
   IExternalFilamentSystemPort,
-  RemoteSpoolDTO,
+  RemoteManufacturerDTO,
   RemoteFilamentDTO,
-  RemoteVendorDTO,
+  RemoteSpoolDTO,
   SpoolPatchDTO,
 } from "@/src/core/ports/index";
 
@@ -22,16 +29,62 @@ export const SpoolmanAdapter: IExternalFilamentSystemPort = {
     return SpoolmanClient.healthCheck(baseUrl);
   },
 
-  async getVendors(baseUrl: string): Promise<RemoteVendorDTO[]> {
-    return SpoolmanClient.getVendors(baseUrl) as Promise<RemoteVendorDTO[]>;
+  async getManufacturers(baseUrl: string): Promise<RemoteManufacturerDTO[]> {
+    const vendors = await SpoolmanClient.getVendors(baseUrl);
+    return vendors.map((v) => ({
+      id: v.id,
+      name: v.name,
+      comment: v.comment,
+    }));
   },
 
   async getFilaments(baseUrl: string): Promise<RemoteFilamentDTO[]> {
-    return SpoolmanClient.getFilaments(baseUrl) as Promise<RemoteFilamentDTO[]>;
+    const filaments = await SpoolmanClient.getFilaments(baseUrl);
+    return filaments.map((f) => ({
+      id: f.id,
+      name: f.name,
+      material: f.material,
+      colorHex: f.color_hex,
+      manufacturer: f.vendor
+        ? { id: f.vendor.id, name: f.vendor.name, comment: f.vendor.comment }
+        : undefined,
+      weight: f.weight,
+      spoolWeight: f.spool_weight,
+      comment: f.comment,
+    }));
   },
 
   async getSpools(baseUrl: string): Promise<RemoteSpoolDTO[]> {
-    return SpoolmanClient.getSpools(baseUrl) as Promise<RemoteSpoolDTO[]>;
+    const spools = await SpoolmanClient.getSpools(baseUrl);
+    return spools.map((s) => ({
+      id: s.id,
+      filament: {
+        id: s.filament.id,
+        name: s.filament.name,
+        material: s.filament.material,
+        colorHex: s.filament.color_hex,
+        manufacturer: s.filament.vendor
+          ? {
+              id: s.filament.vendor.id,
+              name: s.filament.vendor.name,
+              comment: s.filament.vendor.comment,
+            }
+          : undefined,
+        weight: s.filament.weight,
+        spoolWeight: s.filament.spool_weight,
+        comment: s.filament.comment,
+      },
+      remainingWeight: s.remaining_weight,
+      initialWeight: s.initial_weight,
+      spoolWeight: s.spool_weight,
+      usedWeight: s.used_weight,
+      comment: s.comment,
+      archived: s.archived,
+      lotNumber: s.lot_nr,
+      lastUsed: s.last_used,
+      firstUsed: s.first_used,
+      registeredAt: s.registered,
+    }));
   },
 
   async patchSpool(
@@ -39,6 +92,8 @@ export const SpoolmanAdapter: IExternalFilamentSystemPort = {
     remoteId: number,
     patch: SpoolPatchDTO
   ): Promise<void> {
-    await SpoolmanClient.patchSpool(baseUrl, remoteId, patch);
+    await SpoolmanClient.patchSpool(baseUrl, remoteId, {
+      remaining_weight: patch.remainingWeight,
+    });
   },
 };

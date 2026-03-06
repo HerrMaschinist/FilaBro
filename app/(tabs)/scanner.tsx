@@ -277,22 +277,40 @@ export default function ScannerScreen() {
       setNfcRaw(payload.raw);
 
       if (payload.spoolId) {
-        const spoolIdNum = parseInt(payload.spoolId, 10);
-        const found = !isNaN(spoolIdNum) && spools.find((s) => s.id === spoolIdNum);
-        if (found) {
-          setNfcState("success");
-          setNfcMessage(t("scanner.nfc_success"));
-          setTimeout(() => {
-            router.push({ pathname: "/spool/[id]", params: { id: String(spoolIdNum) } });
-            setNfcState("idle");
-            setNfcMessage("");
-          }, 600);
-        } else if (!isNaN(spoolIdNum)) {
-          setNfcState("idle");
-          openNotFoundSheet(spoolIdNum);
+        if (payload.isLocalId) {
+          // FilaBro native tag: look up by _localId
+          const found = spools.find((s) => s._localId === payload.spoolId);
+          if (found) {
+            setNfcState("success");
+            setNfcMessage(t("scanner.nfc_success"));
+            setTimeout(() => {
+              router.push({ pathname: "/spool/[id]", params: { id: String(found.id) } });
+              setNfcState("idle");
+              setNfcMessage("");
+            }, 600);
+          } else {
+            setNfcState("error");
+            setNfcMessage(t("scanner.nfc_no_spool"));
+          }
         } else {
-          setNfcState("error");
-          setNfcMessage(t("scanner.nfc_no_spool"));
+          // Legacy numeric remote-ID tag
+          const spoolIdNum = parseInt(payload.spoolId, 10);
+          const found = !isNaN(spoolIdNum) && spools.find((s) => s.id === spoolIdNum);
+          if (found) {
+            setNfcState("success");
+            setNfcMessage(t("scanner.nfc_success"));
+            setTimeout(() => {
+              router.push({ pathname: "/spool/[id]", params: { id: String(spoolIdNum) } });
+              setNfcState("idle");
+              setNfcMessage("");
+            }, 600);
+          } else if (!isNaN(spoolIdNum)) {
+            setNfcState("idle");
+            openNotFoundSheet(spoolIdNum);
+          } else {
+            setNfcState("error");
+            setNfcMessage(t("scanner.nfc_no_spool"));
+          }
         }
       } else {
         setNfcState("error");

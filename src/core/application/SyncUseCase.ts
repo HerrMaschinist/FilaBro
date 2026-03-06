@@ -113,7 +113,7 @@ async function pullWithConflictPolicy(
 
   // ── 1. Manufacturers ──────────────────────────────────────────────────────
   try {
-    const remoteVendors = await port.getVendors(baseUrl);
+    const remoteVendors = await port.getManufacturers(baseUrl);
 
     // Phase 5: batch fetch all existing by remoteId → O(1) map lookup below
     const vendorRemoteIds = remoteVendors.map((v) => v.id);
@@ -179,8 +179,8 @@ async function pullWithConflictPolicy(
     const vendorRemoteIds = [
       ...new Set(
         remoteFilaments
-          .filter((f) => f.vendor != null)
-          .map((f) => f.vendor!.id)
+          .filter((f) => f.manufacturer != null)
+          .map((f) => f.manufacturer!.id)
       ),
     ];
     const mfrRemoteIdMap = await ManufacturerRepository.getMapByRemoteIds(vendorRemoteIds);
@@ -202,18 +202,18 @@ async function pullWithConflictPolicy(
     }> = [];
 
     for (const rf of remoteFilaments) {
-      const manufacturerLocalId = rf.vendor
-        ? mfrRemoteIdMap.get(rf.vendor.id)?.localId
+      const manufacturerLocalId = rf.manufacturer
+        ? mfrRemoteIdMap.get(rf.manufacturer.id)?.localId
         : undefined;
 
       const remoteSnapshot: Record<string, unknown> = {
         id: rf.id,
         name: rf.name,
         material: rf.material,
-        colorHex: rf.color_hex,
+        colorHex: rf.colorHex,
         manufacturerLocalId,
         weight: rf.weight,
-        spoolWeight: rf.spool_weight,
+        spoolWeight: rf.spoolWeight,
         comment: rf.comment,
       };
 
@@ -224,10 +224,10 @@ async function pullWithConflictPolicy(
           remoteId: rf.id,
           name: rf.name,
           material: rf.material,
-          colorHex: rf.color_hex,
+          colorHex: rf.colorHex,
           manufacturerLocalId,
           weight: rf.weight,
-          spoolWeight: rf.spool_weight,
+          spoolWeight: rf.spoolWeight,
           comment: rf.comment,
         });
       } else {
@@ -238,10 +238,10 @@ async function pullWithConflictPolicy(
             remoteId: rf.id,
             name: rf.name,
             material: rf.material,
-            colorHex: rf.color_hex,
+            colorHex: rf.colorHex,
             manufacturerLocalId,
             weight: rf.weight,
-            spoolWeight: rf.spool_weight,
+            spoolWeight: rf.spoolWeight,
             comment: rf.comment,
           });
         } else {
@@ -310,16 +310,16 @@ async function pullWithConflictPolicy(
       const remoteData = {
         remoteId: rs.id,
         filamentLocalId,
-        remainingWeight: rs.remaining_weight,
-        initialWeight: rs.initial_weight,
-        spoolWeight: rs.spool_weight,
-        usedWeight: rs.used_weight,
+        remainingWeight: rs.remainingWeight,
+        initialWeight: rs.initialWeight,
+        spoolWeight: rs.spoolWeight,
+        usedWeight: rs.usedWeight,
         comment: rs.comment,
         archived: rs.archived,
-        lotNr: rs.lot_nr,
-        lastUsed: rs.last_used,
-        firstUsed: rs.first_used,
-        registered: rs.registered,
+        lotNr: rs.lotNumber,
+        lastUsed: rs.lastUsed,
+        firstUsed: rs.firstUsed,
+        registered: rs.registeredAt,
       };
 
       const record = existingSpoolMap.get(rs.id);

@@ -9,7 +9,7 @@
  * Future: "bambu", "orca", etc.
  */
 
-export type ExternalSystem = "spoolman";
+export type ExternalSystem = "spoolman" | "filabro";
 
 export type EntityType = "spool" | "filament" | "manufacturer";
 

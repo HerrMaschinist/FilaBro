@@ -6,7 +6,9 @@ export type {
 
 export {
   checkNfcAvailability,
+  formatTagPayload,
+  parseTagPayload,
   scanTagOnce,
   stopScan,
-  parseTagPayload,
+  writeTag,
 } from "./NfcService";

@@ -125,7 +125,7 @@ export async function push(
             dirtyFields: dirty,
           });
         } else {
-          const payload = { remaining_weight: remainingToSend };
+          const payload = { remainingWeight: remainingToSend };
           console.log("[SYNC PUSH] sending", {
             remoteId: spool.remoteId,
             source: statsWeight !== undefined ? "spool_stats" : "spools_legacy",
@@ -231,7 +231,7 @@ export async function pushOne(
     return;
   }
 
-  const payload = { remaining_weight: remainingToSend };
+  const payload = { remainingWeight: remainingToSend };
   console.log("[SYNC PUSH] sending", {
     remoteId: record.remoteId,
     source: statsWeight !== undefined ? "spool_stats" : "spools_legacy",

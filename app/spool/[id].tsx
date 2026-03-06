@@ -172,6 +172,16 @@ export default function SpoolDetailScreen() {
               color={favorite ? colors.error : colors.textTertiary}
             />
           </Pressable>
+          {spool._localId && Platform.OS !== "web" && (
+            <Pressable
+              style={s.actionBtn}
+              onPress={() => router.push(`/nfc-write?localId=${spool._localId}`)}
+              hitSlop={12}
+              testID="write-nfc-tag"
+            >
+              <Ionicons name="radio-outline" size={22} color={colors.textSecondary} />
+            </Pressable>
+          )}
           <Pressable
             style={s.actionBtn}
             onPress={() => spool._localId && router.push(`/edit-spool?localId=${spool._localId}`)}

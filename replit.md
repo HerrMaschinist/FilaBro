@@ -41,6 +41,7 @@ Preferred communication style: Simple, everyday language.
   - `app/edit-spool.tsx` — modal form to edit spool (displayName, comment, lotNr, weights, qrCode, nfcTagId, archived)
   - `app/edit-filament.tsx` — modal form to edit filament (all fields including local-only paidPrice + shop)
   - `app/edit-manufacturer.tsx` — modal form to edit manufacturer (name, website, comment)
+  - `app/nfc-write.tsx` — NFC tag provisioning screen (accepts `localId` param, encodes `filabro:v1:<localId>` via NDEF write; supports pre-formatted tags on iOS, blank tags via NdefFormatable on Android; graceful unavailable state for Expo Go / no-hardware)
 - **State Management**: React Context (`AppContext`) is the single UI-facing state boundary. Screens never call repositories or API clients directly. AppContext provides full CRUD + edit for manufacturers, filaments, and spools with in-memory web fallback. Edit methods: `updateFilament`, `updateManufacturer`, `updateSpool`. Post-edit reload: `reloadCatalog`, `reloadSpoolsLocal`.
 - **Data Fetching**: TanStack Query (`@tanstack/react-query`) for server-side cache and request management
 - **Fonts**: Inter via `@expo-google-fonts/inter`
@@ -60,11 +61,14 @@ Three-layer architecture: API → Repository → Domain
 
 4. **CatalogService** (`src/features/catalog/CatalogService.ts`): Thin coordinator for catalog CRUD. Delegates to repositories. Provides `MATERIALS` constant. Guards against `isPersistenceEnabled === false`.
 
-5. **SyncService** (`src/data/sync/SyncService.ts`): Orchestrates pull/push between local DB and Spoolman.
+5. **SyncService** (`src/data/sync/SyncService.ts`): Orchestrates pull/push between local DB and external system.
    - `pull(baseUrl)` — fetch remote data, merge into local DB
    - `push(baseUrl)` — push dirty local records to server
    - `sync(baseUrl)` — push first, then pull (preserves local changes)
    - **Conflict strategy**: Server wins on all remote fields. `isFavorite` is local-only, never overwritten. Last-write-wins from server perspective when conflicts occur.
+   - Accepts `IExternalFilamentSystemPort` (injected from `AppContext.tsx`) — no direct Spoolman dependency.
+
+6. **Hexagonal Port (`src/core/ports/index.ts`)**: `IExternalFilamentSystemPort` DTOs use backend-neutral camelCase field names (`RemoteManufacturerDTO`, `RemoteFilamentDTO.colorHex`, `RemoteSpoolDTO.remainingWeight`, etc.). `ExternalSystem = "spoolman" | "filabro"`. The `SpoolmanAdapter` (`src/adapters/spoolman/index.ts`) is the **only** file that maps Spoolman snake_case API fields to/from these neutral DTOs. Swap adapter to add a new backend without touching SyncUseCase.
 
 ### Local Database
 
@@ -152,7 +156,7 @@ The app's core data source. Self-hosted on local network.
 | Package | Purpose |
 |---|---|
 | `expo-camera` | Barcode/QR scanning in Scanner tab |
-| `react-native-nfc-manager` | NFC tag reading (Dev Client/EAS build only; graceful fallback in Expo Go and web). `parseTagPayload()` supports JSON, URL, prefix (`spool:42`, `filabro:42`), UUID, and free-text numeric extraction. |
+| `react-native-nfc-manager` | NFC tag reading **and writing** (Dev Client/EAS build only; graceful fallback in Expo Go and web). Tag format: `filabro:v1:<spoolLocalId>`. Scanner handles both legacy numeric-remoteId tags and new FilaBro localId tags. `app/nfc-write.tsx` provisions NFC tags for a spool using `writeTag(localId)`. |
 | `expo-secure-store` | Secure storage for server URL |
 | `expo-sqlite` | Local SQLite database |
 | `expo-haptics` | Tactile feedback |
