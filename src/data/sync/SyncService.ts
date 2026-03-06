@@ -5,10 +5,8 @@
  * Pull logic has moved to SyncUseCase (Application Layer) in Phase 3.
  *
  * Public API:
- *   pull(baseUrl)  — DEPRECATED: use SyncUseCase.pull() instead. Kept for reference.
- *   push(baseUrl)  — push all dirty local records to server, mark clean, close conflicts
- *   sync(baseUrl)  — push first, then pull (via SyncUseCase)
- *   pushOne(baseUrl, spoolLocalId) — push a single dirty spool
+ *   push(baseUrl, port)    — push all dirty local records to server, mark clean, close conflicts
+ *   pushOne(baseUrl, localId, port) — push a single dirty spool
  *
  * Conflict strategy: See SyncUseCase for pull policy.
  *   Push: local always wins. After push succeeds, close any open conflict (keep_local).
@@ -16,17 +14,19 @@
  * Phase 4:
  *   remaining_weight for the PATCH comes from spool_stats (current projection),
  *   falling back to SpoolSyncRecord.remainingWeight for pre-Phase-4 data.
+ *
+ * Phase 5/6:
+ *   SpoolmanClient is no longer imported here. push() and pushOne() receive
+ *   IExternalFilamentSystemPort from the caller so the transport is swappable.
  */
 import { getDb } from "../db/client";
 import { syncMeta } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { ManufacturerRepository } from "../repositories/ManufacturerRepository";
-import { FilamentRepository } from "../repositories/FilamentRepository";
 import { SpoolRepository } from "../repositories/SpoolRepository";
 import { SpoolStatsRepository } from "../repositories/SpoolStatsRepository";
 import { ConflictSnapshotRepository } from "../repositories/ConflictSnapshotRepository";
 import type { SpoolView } from "../../domain/models";
-import * as SpoolmanClient from "../api/SpoolmanClient";
+import type { IExternalFilamentSystemPort } from "../../core/ports/index";
 
 function log(msg: string, data?: unknown) {
   if (__DEV__) {
@@ -79,98 +79,7 @@ export interface SyncResult {
 }
 
 /**
- * @deprecated Use SyncUseCase.pull() which applies the offline-first conflict policy.
- * Kept here for reference until Phase 4 eliminates SyncService entirely.
- */
-export async function pull(baseUrl: string): Promise<SyncResult> {
-  const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, errors: [] };
-  log(`pull() [DEPRECATED — use SyncUseCase.pull()] started — server: ${baseUrl}`);
-
-  try {
-    const remoteVendors = await SpoolmanClient.getVendors(baseUrl);
-    for (const vendor of remoteVendors) {
-      await ManufacturerRepository.upsertFromRemote({
-        remoteId: vendor.id,
-        name: vendor.name,
-        comment: vendor.comment,
-      });
-    }
-    await updateSyncMeta("manufacturer", "lastPullAt", baseUrl);
-
-    const remoteFilaments = await SpoolmanClient.getFilaments(baseUrl);
-    for (const rf of remoteFilaments) {
-      let manufacturerLocalId: string | undefined;
-      if (rf.vendor) {
-        const mfr = await ManufacturerRepository.getByRemoteId(rf.vendor.id);
-        manufacturerLocalId = mfr?.localId;
-      }
-      await FilamentRepository.upsertFromRemote({
-        remoteId: rf.id,
-        name: rf.name,
-        material: rf.material,
-        colorHex: rf.color_hex,
-        manufacturerLocalId,
-        weight: rf.weight,
-        spoolWeight: rf.spool_weight,
-        comment: rf.comment,
-      });
-    }
-    await updateSyncMeta("filament", "lastPullAt", baseUrl);
-
-    const remoteSpools = await SpoolmanClient.getSpools(baseUrl);
-    for (const rs of remoteSpools) {
-      let filamentLocalId: string | undefined;
-      if (rs.filament) {
-        const localFilament = await FilamentRepository.getByRemoteId(rs.filament.id);
-        filamentLocalId = localFilament?.localId;
-      }
-      const record = await SpoolRepository.getRecordByRemoteId(rs.id);
-      if (!record) {
-        await SpoolRepository.insertSpoolFromRemote({
-          remoteId: rs.id,
-          filamentLocalId,
-          remainingWeight: rs.remaining_weight,
-          initialWeight: rs.initial_weight,
-          spoolWeight: rs.spool_weight,
-          usedWeight: rs.used_weight,
-          comment: rs.comment,
-          archived: rs.archived,
-          lotNr: rs.lot_nr,
-          lastUsed: rs.last_used,
-          firstUsed: rs.first_used,
-          registered: rs.registered,
-        });
-      } else if (record.syncState === "synced") {
-        await SpoolRepository.applyRemoteSpoolUpdate(record.localId, {
-          remoteId: rs.id,
-          filamentLocalId,
-          remainingWeight: rs.remaining_weight,
-          initialWeight: rs.initial_weight,
-          spoolWeight: rs.spool_weight,
-          usedWeight: rs.used_weight,
-          comment: rs.comment,
-          archived: rs.archived,
-          lotNr: rs.lot_nr,
-          lastUsed: rs.last_used,
-          firstUsed: rs.first_used,
-          registered: rs.registered,
-        });
-      }
-      // dirty/pending_push: skip silently (use SyncUseCase.pull() for conflict handling)
-      result.pulled++;
-    }
-    await updateSyncMeta("spool", "lastPullAt", baseUrl);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log(`pull() error: ${msg}`);
-    result.errors.push(msg);
-  }
-
-  return result;
-}
-
-/**
- * Push all dirty/pending_push spools to Spoolman.
+ * Push all dirty/pending_push spools to the remote system via port.
  * Marks them as synced on success.
  * Closes any open conflict snapshot for successfully pushed spools (keep_local resolution).
  * On failure, leaves them dirty for the next sync cycle.
@@ -178,7 +87,10 @@ export async function pull(baseUrl: string): Promise<SyncResult> {
  * Phase 4: remaining_weight is sourced from spool_stats first, then falls back
  * to SpoolSyncRecord.remainingWeight for backward compatibility with pre-Phase-4 data.
  */
-export async function push(baseUrl: string): Promise<SyncResult> {
+export async function push(
+  baseUrl: string,
+  port: IExternalFilamentSystemPort
+): Promise<SyncResult> {
   const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, errors: [] };
   const dirtySpools = await SpoolRepository.getDirty();
   log(`push() — ${dirtySpools.length} dirty spools`);
@@ -220,17 +132,11 @@ export async function push(baseUrl: string): Promise<SyncResult> {
             payload,
           });
 
-          const patchResp = await SpoolmanClient.patchSpool(
-            baseUrl,
-            spool.remoteId,
-            payload
-          );
+          await port.patchSpool(baseUrl, spool.remoteId, payload);
 
           console.log("[SYNC PUSH] response", {
             remoteId: spool.remoteId,
             status: 200,
-            remaining_weight: patchResp.remaining_weight,
-            body: JSON.stringify(patchResp).slice(0, 400),
           });
         }
       } else {
@@ -276,21 +182,6 @@ export async function push(baseUrl: string): Promise<SyncResult> {
 }
 
 /**
- * Push pending changes first, then pull fresh data via SyncUseCase.
- */
-export async function sync(baseUrl: string): Promise<SyncResult> {
-  log(`sync() started`);
-  const pushResult = await push(baseUrl);
-  const pullResult = await pull(baseUrl);
-  return {
-    pulled: pullResult.pulled,
-    pushed: pushResult.pushed,
-    conflicts: pushResult.conflicts + pullResult.conflicts,
-    errors: [...pushResult.errors, ...pullResult.errors],
-  };
-}
-
-/**
  * Push a single spool by its localId.
  * Used for immediate save after weight update.
  *
@@ -298,7 +189,8 @@ export async function sync(baseUrl: string): Promise<SyncResult> {
  */
 export async function pushOne(
   baseUrl: string,
-  localId: string
+  localId: string,
+  port: IExternalFilamentSystemPort
 ): Promise<void> {
   const record = await SpoolRepository.getRecordByLocalId(localId);
 
@@ -347,17 +239,11 @@ export async function pushOne(
   });
 
   try {
-    const patchResp = await SpoolmanClient.patchSpool(
-      baseUrl,
-      record.remoteId,
-      payload
-    );
+    await port.patchSpool(baseUrl, record.remoteId, payload);
 
     console.log("[SYNC PUSH] response", {
       remoteId: record.remoteId,
       status: 200,
-      remaining_weight: patchResp.remaining_weight,
-      body: JSON.stringify(patchResp).slice(0, 400),
     });
 
     await SpoolRepository.markSynced(record.localId);

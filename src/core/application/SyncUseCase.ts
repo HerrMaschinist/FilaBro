@@ -437,7 +437,7 @@ export const SyncUseCase = {
     serverUrl: string,
     port: IExternalFilamentSystemPort
   ): Promise<SyncResult> {
-    const pushResult = await SyncService.push(serverUrl);
+    const pushResult = await SyncService.push(serverUrl, port);
     const pullResult = await pullWithConflictPolicy(serverUrl, port);
     return {
       pulled: pullResult.pulled,
@@ -460,16 +460,25 @@ export const SyncUseCase = {
 
   /**
    * Push only: send all dirty local records to the server.
+   * Pass the desired IExternalFilamentSystemPort implementation.
    */
-  async push(serverUrl: string): Promise<SyncResult> {
-    return SyncService.push(serverUrl);
+  async push(
+    serverUrl: string,
+    port: IExternalFilamentSystemPort
+  ): Promise<SyncResult> {
+    return SyncService.push(serverUrl, port);
   },
 
   /**
    * Push a single spool by localId. Fire-and-forget safe.
+   * Pass the desired IExternalFilamentSystemPort implementation.
    */
-  async pushOne(serverUrl: string, spoolLocalId: string): Promise<void> {
-    return SyncService.pushOne(serverUrl, spoolLocalId);
+  async pushOne(
+    serverUrl: string,
+    spoolLocalId: string,
+    port: IExternalFilamentSystemPort
+  ): Promise<void> {
+    return SyncService.pushOne(serverUrl, spoolLocalId, port);
   },
 
   /**

@@ -485,7 +485,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await WeightUseCase.adjustRemaining(spool._localId, weight, "manual");
 
       if (serverUrl) {
-        SyncUseCase.pushOne(serverUrl, spool._localId)
+        SyncUseCase.pushOne(serverUrl, spool._localId, SpoolmanAdapter)
           .then(() => {
             setIsOnline(true);
             setDirtySpoolIds((prev) => {
@@ -505,7 +505,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const syncPending = useCallback(async () => {
     if (!serverUrl) return;
     try {
-      await SyncUseCase.push(serverUrl);
+      await SyncUseCase.push(serverUrl, SpoolmanAdapter);
       // Phase 5: reload first page after push
       await loadFirstPage();
       setIsOnline(true);
