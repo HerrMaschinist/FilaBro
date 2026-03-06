@@ -78,7 +78,7 @@ export async function setFavorites(ids: number[]): Promise<void> {
   return AsyncStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(ids));
 }
 
-export async function getSpoolCache(): Promise<import("./spoolman").Spool[]> {
+export async function getSpoolCache(): Promise<import("./spoolViewTypes").Spool[]> {
   const val = await AsyncStorage.getItem(STORAGE_KEYS.SPOOL_CACHE);
   if (!val) return [];
   try {
@@ -89,7 +89,7 @@ export async function getSpoolCache(): Promise<import("./spoolman").Spool[]> {
 }
 
 export async function setSpoolCache(
-  spools: import("./spoolman").Spool[]
+  spools: import("./spoolViewTypes").Spool[]
 ): Promise<void> {
   return AsyncStorage.setItem(STORAGE_KEYS.SPOOL_CACHE, JSON.stringify(spools));
 }

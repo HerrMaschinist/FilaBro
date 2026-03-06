@@ -23,7 +23,7 @@ import {
   getLanguage,
   setLanguage as persistLanguage,
 } from "@/lib/storage";
-import type { Spool } from "@/lib/spoolman";
+import type { Spool } from "@/lib/spoolViewTypes";
 import type {
   SpoolView,
   Manufacturer,

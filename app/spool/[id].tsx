@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import Colors from "@/constants/colors";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { GlassCard } from "@/components/ui/GlassCard";
-import type { Spool } from "@/lib/spoolman";
+import type { Spool } from "@/lib/spoolViewTypes";
 
 function percentColor(pct: number, colors: typeof Colors.dark) {
   if (pct > 50) return colors.success ?? colors.accent;

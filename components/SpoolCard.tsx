@@ -22,7 +22,7 @@ import {
   getFilamentColor,
   getRemainingPercent,
   getDisplayName,
-} from "@/lib/spoolman";
+} from "@/lib/spoolViewTypes";
 
 interface SpoolCardProps {
   spool: Spool;

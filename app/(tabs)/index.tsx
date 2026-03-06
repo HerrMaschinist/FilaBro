@@ -26,7 +26,7 @@ import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { SpoolCard } from "@/components/SpoolCard";
 import { FAB } from "@/components/ui/FAB";
-import { Spool } from "@/lib/spoolman";
+import type { Spool } from "@/lib/spoolViewTypes";
 
 type SortKey = "name" | "remaining" | "material" | "vendor";
 type SortDir = "asc" | "desc";

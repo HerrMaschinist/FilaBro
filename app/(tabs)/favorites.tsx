@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { SpoolCard } from "@/components/SpoolCard";
-import { Spool } from "@/lib/spoolman";
+import type { Spool } from "@/lib/spoolViewTypes";
 
 export default function FavoritesScreen() {
   const { t } = useTranslation();

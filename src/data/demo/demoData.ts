@@ -1,4 +1,4 @@
-import type { Spool } from "@/lib/spoolman";
+import type { Spool } from "@/lib/spoolViewTypes";
 import type {
   Manufacturer,
   Filament as DomainFilament,

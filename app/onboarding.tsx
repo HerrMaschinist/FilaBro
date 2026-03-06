@@ -16,7 +16,8 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
-import { checkHealth } from "@/lib/spoolman";
+import { SpoolmanAdapter } from "@/src/adapters/spoolman";
+import type { SpoolmanNetworkError } from "@/src/data/api/SpoolmanClient";
 
 const DEFAULT_URL = "http://192.168.XX.XX:7912";
 
@@ -53,7 +54,10 @@ export default function OnboardingScreen() {
     setServerVersion("");
 
     try {
-      const health = await checkHealth(trimmed);
+      const health = (await SpoolmanAdapter.healthCheck(trimmed)) as {
+        status: string;
+        version?: string;
+      };
       setStatus("ok");
       setServerVersion(health.version ?? "");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -61,12 +65,12 @@ export default function OnboardingScreen() {
       setStatus("error");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
-      const netErr = (err as { networkError?: { type: string; message: string; endpoint?: string } }).networkError;
-      if (netErr) {
+      const netErr = err as Partial<SpoolmanNetworkError>;
+      if (netErr.errorType) {
         setDiag({
           endpoint: netErr.endpoint ?? trimmed,
-          errorType: netErr.type,
-          errorMsg: netErr.message,
+          errorType: netErr.errorType,
+          errorMsg: netErr.message ?? String(err),
         });
       } else {
         const msg = err instanceof Error ? err.message : String(err);
