@@ -65,6 +65,15 @@ export default function ScannerScreen() {
   const [nfcRaw, setNfcRaw] = useState<string | null>(null);
   const isScanningRef = useRef(false);
 
+  // NFC sub-mode: read / write
+  const [nfcSubMode, setNfcSubMode] = useState<"read" | "write">("read");
+  const nfcSubPillAnim = useSharedValue(0);
+  const nfcReadScale = useSharedValue(1);
+  const nfcWriteScale = useSharedValue(1);
+  const [nfcSubWidth, setNfcSubWidth] = useState(220);
+  // NFC write: selected spool localId
+  const [writeLocalId, setWriteLocalId] = useState<string | null>(null);
+
   // "Spool not found" sheet state
   const [pendingSpoolId, setPendingSpoolId] = useState<number | null>(null);
   const [notFoundSheet, setNotFoundSheet] = useState(false);
@@ -130,7 +139,21 @@ export default function ScannerScreen() {
       stopScan();
       setNfcState("idle");
     }
+    if (mode !== "nfc") {
+      setNfcSubMode("read");
+      nfcSubPillAnim.value = 0;
+      setWriteLocalId(null);
+    }
   }, [mode]);
+
+  useEffect(() => {
+    nfcSubPillAnim.value = withSpring(nfcSubMode === "read" ? 0 : 1, {
+      damping: 18,
+      stiffness: 280,
+      mass: 0.8,
+    });
+    if (nfcSubMode === "read") setWriteLocalId(null);
+  }, [nfcSubMode]);
 
   // Pill geometry
   const pillWidth = Math.max(0, (switcherWidth - 8) / 2);
@@ -150,6 +173,21 @@ export default function ScannerScreen() {
   const contentFadeStyle = useAnimatedStyle(() => ({
     opacity: contentOpacity.value,
   }));
+
+  // NFC sub-mode pill geometry
+  const nfcSubPillWidth = Math.max(0, (nfcSubWidth - 8) / 2);
+  const nfcSubPillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: nfcSubPillAnim.value * nfcSubPillWidth }],
+  }));
+  const nfcReadScaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: nfcReadScale.value }],
+  }));
+  const nfcWriteScaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: nfcWriteScale.value }],
+  }));
+
+  // Active spools for write picker (non-archived + has a valid localId)
+  const activeSpools = spools.filter((s) => !s.archived && !!s._localId);
 
   // Context-aware segmented control colors
   const onCamera = mode === "qr" && !!permission?.granted;
@@ -377,6 +415,52 @@ export default function ScannerScreen() {
     </View>
   );
 
+  // ─── NFC sub-mode switcher (Read / Write) ─────────────────────────────────
+  const NfcSubSwitcher = (
+    <View
+      style={[s.subSegControl, { backgroundColor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)", borderColor: isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)" }]}
+      onLayout={(e) => setNfcSubWidth(e.nativeEvent.layout.width)}
+    >
+      <Animated.View
+        style={[s.subSegPill, nfcSubPillStyle, { width: nfcSubPillWidth, pointerEvents: "none" }]}
+      />
+      <Animated.View style={[s.segOptionWrap, nfcReadScaleStyle]}>
+        <Pressable
+          style={s.subSegOption}
+          onPressIn={() => { nfcReadScale.value = withSpring(0.91, { damping: 15, stiffness: 460 }); }}
+          onPressOut={() => { nfcReadScale.value = withSpring(1, { damping: 13, stiffness: 300 }); }}
+          onPress={() => { if (nfcSubMode !== "read") { setNfcSubMode("read"); Haptics.selectionAsync(); } }}
+          testID="nfc-submode-read"
+        >
+          <Ionicons name="radio-outline" size={13} color={nfcSubMode === "read" ? "#fff" : (isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)")} />
+          <Text style={[s.subSegLabel, {
+            color: nfcSubMode === "read" ? "#fff" : (isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)"),
+            fontFamily: nfcSubMode === "read" ? "Inter_600SemiBold" : "Inter_400Regular",
+          }]}>
+            {t("scanner.nfc_submode_read")}
+          </Text>
+        </Pressable>
+      </Animated.View>
+      <Animated.View style={[s.segOptionWrap, nfcWriteScaleStyle]}>
+        <Pressable
+          style={s.subSegOption}
+          onPressIn={() => { nfcWriteScale.value = withSpring(0.91, { damping: 15, stiffness: 460 }); }}
+          onPressOut={() => { nfcWriteScale.value = withSpring(1, { damping: 13, stiffness: 300 }); }}
+          onPress={() => { if (nfcSubMode !== "write") { setNfcSubMode("write"); Haptics.selectionAsync(); } }}
+          testID="nfc-submode-write"
+        >
+          <Ionicons name="pencil-outline" size={13} color={nfcSubMode === "write" ? "#fff" : (isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)")} />
+          <Text style={[s.subSegLabel, {
+            color: nfcSubMode === "write" ? "#fff" : (isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)"),
+            fontFamily: nfcSubMode === "write" ? "Inter_600SemiBold" : "Inter_400Regular",
+          }]}>
+            {t("scanner.nfc_submode_write")}
+          </Text>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+
   // ─── QR mode: permission loading ──────────────────────────────────────────
   if (mode === "qr" && !permission) {
     return (
@@ -567,8 +651,10 @@ export default function ScannerScreen() {
       <View style={[s.nfcContainer, { paddingTop: topPad + 8, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 49 }]}>
         <Text style={[s.header, { color: colors.text }]}>{t("scanner.title")}</Text>
         {ModeSwitcher}
+        {NfcSubSwitcher}
 
         <Animated.View style={[s.nfcContent, contentFadeStyle]}>
+          {/* ─ Shared unavailability states ─ */}
           {nfcState === "checking" && (
             <>
               <ActivityIndicator color={colors.accent} size="large" />
@@ -602,7 +688,8 @@ export default function ScannerScreen() {
             </View>
           )}
 
-          {nfcAvailability?.available && nfcState !== "checking" && (
+          {/* ─ NFC Read mode ─ */}
+          {nfcAvailability?.available && nfcState !== "checking" && nfcSubMode === "read" && (
             <>
               <View style={[s.nfcIcon, {
                 backgroundColor:
@@ -682,6 +769,92 @@ export default function ScannerScreen() {
                 </Text>
               </Pressable>
             </>
+          )}
+
+          {/* ─ NFC Write mode ─ */}
+          {nfcAvailability?.available && nfcState !== "checking" && nfcSubMode === "write" && (
+            <View style={s.writeContainer}>
+              <Text style={[s.writeTitle, { color: colors.text }]}>
+                {t("scanner.nfc_write_pick_spool")}
+              </Text>
+              <Text style={[s.writeSubtitle, { color: colors.textSecondary }]}>
+                {t("scanner.nfc_write_subtitle")}
+              </Text>
+
+              {activeSpools.length === 0 ? (
+                <View style={[s.nfcInfoBox, { backgroundColor: `${colors.textTertiary}10`, borderColor: colors.surfaceBorder, marginTop: 12 }]}>
+                  <Ionicons name="layers-outline" size={32} color={colors.textTertiary} />
+                  <Text style={[s.nfcInfoTitle, { color: colors.textSecondary, fontSize: 15 }]}>
+                    {t("scanner.nfc_write_no_spools")}
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={s.spoolPickerScroll} showsVerticalScrollIndicator={false}>
+                  {activeSpools.map((spool) => {
+                    const isSelected = writeLocalId === spool._localId;
+                    const dotHex = spool.filament?.color_hex;
+                    const dotColor = dotHex ? (dotHex.startsWith("#") ? dotHex : `#${dotHex}`) : null;
+                    return (
+                      <Pressable
+                        key={spool._localId}
+                        style={({ pressed }) => [
+                          s.spoolPickerRow,
+                          {
+                            backgroundColor: isSelected ? `${colors.accent}18` : colors.surface,
+                            borderColor: isSelected ? colors.accent : colors.surfaceBorder,
+                          },
+                          pressed && { opacity: 0.75 },
+                        ]}
+                        onPress={() => {
+                          setWriteLocalId(spool._localId ?? null);
+                          Haptics.selectionAsync();
+                        }}
+                        testID={`write-spool-${spool._localId}`}
+                      >
+                        <View style={s.spoolPickerLeft}>
+                          {dotColor ? (
+                            <View style={[s.spoolColorDot, { backgroundColor: dotColor }]} />
+                          ) : (
+                            <View style={[s.spoolColorDot, { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.surfaceBorder }]} />
+                          )}
+                          <View style={s.spoolPickerTexts}>
+                            <Text style={[s.spoolPickerName, { color: isSelected ? colors.accent : colors.text }]} numberOfLines={1}>
+                              {spool._displayName ?? spool.filament?.name ?? `Spool #${spool.id}`}
+                            </Text>
+                            <Text style={[s.spoolPickerSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                              {[spool.filament?.vendor?.name, spool.filament?.material].filter(Boolean).join(" · ")}
+                            </Text>
+                          </View>
+                        </View>
+                        {isSelected && (
+                          <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              {writeLocalId && (
+                <Pressable
+                  style={({ pressed }) => [
+                    s.actionBtn,
+                    { backgroundColor: `${colors.accent}22`, borderColor: colors.accent, marginTop: 12 },
+                    pressed && { opacity: 0.75 },
+                  ]}
+                  onPress={() => {
+                    if (!writeLocalId) return;
+                    router.push({ pathname: "/nfc-write", params: { localId: writeLocalId } });
+                  }}
+                  testID="nfc-write-go"
+                >
+                  <Ionicons name="pencil" size={20} color={colors.accent} />
+                  <Text style={[s.actionBtnText, { color: colors.accent }]}>
+                    {t("scanner.nfc_write_go")}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
           )}
         </Animated.View>
       </View>
@@ -874,6 +1047,101 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
     actionBtnText: {
       fontSize: 15,
       fontFamily: "Inter_600SemiBold",
+    },
+
+    // ─── NFC sub-mode switcher ────────────────────────────────────────────────
+    subSegControl: {
+      flexDirection: "row",
+      alignSelf: "center",
+      borderRadius: 11,
+      padding: 3,
+      borderWidth: 1,
+      position: "relative",
+      overflow: "hidden",
+      minWidth: 180,
+    },
+    subSegPill: {
+      position: "absolute",
+      top: 3,
+      bottom: 3,
+      left: 3,
+      borderRadius: 8,
+      backgroundColor: "rgba(59,130,246,0.75)",
+      shadowColor: "#3B82F6",
+      shadowOpacity: 0.22,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    subSegOption: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      gap: 5,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    subSegLabel: {
+      fontSize: 12,
+      lineHeight: 13,
+      includeFontPadding: false,
+      letterSpacing: 0.05,
+    },
+
+    // ─── NFC Write mode ───────────────────────────────────────────────────────
+    writeContainer: {
+      flex: 1,
+      width: "100%",
+      gap: 8,
+    },
+    writeTitle: {
+      fontSize: 18,
+      fontFamily: "Inter_700Bold",
+      letterSpacing: -0.3,
+    },
+    writeSubtitle: {
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+      lineHeight: 19,
+      marginBottom: 4,
+    },
+    spoolPickerScroll: {
+      flex: 1,
+    },
+    spoolPickerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderRadius: 14,
+      borderWidth: 1,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      marginBottom: 6,
+    },
+    spoolPickerLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      flex: 1,
+    },
+    spoolColorDot: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      flexShrink: 0,
+    },
+    spoolPickerTexts: {
+      flex: 1,
+      gap: 2,
+    },
+    spoolPickerName: {
+      fontSize: 14,
+      fontFamily: "Inter_500Medium",
+    },
+    spoolPickerSub: {
+      fontSize: 12,
+      fontFamily: "Inter_400Regular",
     },
 
     // ─── NFC mode ────────────────────────────────────────────────────────────

@@ -25,6 +25,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "qrcode.viewfinder", selected: "qrcode.viewfinder" }} />
         <Label>{t("tabs.scanner")}</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="catalog">
+        <Icon sf={{ default: "books.vertical", selected: "books.vertical.fill" }} />
+        <Label>{t("tabs.catalog")}</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <Icon sf={{ default: "gearshape", selected: "gearshape.fill" }} />
         <Label>{t("tabs.settings")}</Label>
@@ -104,6 +108,19 @@ function ClassicTabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons
                 name={focused ? "scan" : "scan-outline"}
+                size={24}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="catalog"
+          options={{
+            title: t("tabs.catalog"),
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? "library" : "library-outline"}
                 size={24}
                 color={color}
               />

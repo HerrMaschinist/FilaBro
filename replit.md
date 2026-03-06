@@ -2,192 +2,84 @@
 
 ## Overview
 
-FilaBro is a mobile app for managing 3D printing filament spools. It connects to a self-hosted **Spoolman** server on the local network to display and manage spool inventory — including remaining weight, filament types, manufacturers, and user favorites.
+FilaBro is a mobile application designed for efficient management of 3D printing filament spools. It interfaces with a self-hosted Spoolman server on the local network to provide real-time inventory tracking, including remaining weight, filament types, and manufacturer details. The app prioritizes a fast, modern, and offline-capable user experience.
 
-The app is built with **Expo React Native** targeting Android first, iOS later. It is designed to feel like a real product: fast, modern, and offline-capable. There is also a lightweight **Express.js** server included (for Replit hosting/proxy purposes).
-
-Key user-facing features:
-- Browse and search spool inventory from Spoolman
-- View spool details and edit remaining weight
-- Manual CRUD for manufacturers, filaments, and spools (offline-first)
-- Mark spools as favorites
-- Barcode/QR scanner to look up spools
-- Offline mode with local SQLite persistence and sync queue
-- Onboarding flow to configure Spoolman server URL (skippable)
-- Settings screen with theme, language, and server management
-- Dark Glass UI theme with blur effects and translucent cards
-
----
+Key capabilities include:
+- Browsing, searching, and managing spool inventory.
+- Detailed spool views with editing capabilities for remaining weight and other attributes.
+- Offline-first CRUD operations for manufacturers, filaments, and spools.
+- Barcode/QR and NFC scanning for quick spool lookup and provisioning.
+- Robust offline mode with local SQLite persistence and a synchronization queue.
+- User onboarding for Spoolman server configuration and personalized settings.
+- A distinctive Dark Glass UI theme with blur effects and translucent elements.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
 
----
-
 ## System Architecture
 
 ### Frontend (Mobile App)
 
-- **Framework**: Expo SDK 54 / React Native 0.81 with TypeScript
-- **Navigation**: `expo-router` (file-based routing, similar to Next.js)
-  - `app/index.tsx` — entry point, redirects based on onboarding state
-  - `app/onboarding.tsx` — first-run server setup screen
-  - `app/(tabs)/` — main tab group: Spools, Favorites, Scanner, Settings
-  - `app/spool/[id].tsx` — spool detail screen with glass UI, edit/delete actions, and filament edit shortcut
-  - `app/add-manufacturer.tsx` — modal form to create manufacturer
-  - `app/add-filament.tsx` — modal form to create filament (with material chips, manufacturer picker)
-  - `app/add-spool.tsx` — modal form to create spool (with filament picker)
-  - `app/edit-spool.tsx` — modal form to edit spool (displayName, comment, lotNr, weights, qrCode, nfcTagId, archived)
-  - `app/edit-filament.tsx` — modal form to edit filament (all fields including local-only paidPrice + shop)
-  - `app/edit-manufacturer.tsx` — modal form to edit manufacturer (name, website, comment)
-  - `app/nfc-write.tsx` — NFC tag provisioning screen (accepts `localId` param, encodes `filabro:v1:<localId>` via NDEF write; supports pre-formatted tags on iOS, blank tags via NdefFormatable on Android; graceful unavailable state for Expo Go / no-hardware)
-- **State Management**: React Context (`AppContext`) is the single UI-facing state boundary. Screens never call repositories or API clients directly. AppContext provides full CRUD + edit for manufacturers, filaments, and spools with in-memory web fallback. Edit methods: `updateFilament`, `updateManufacturer`, `updateSpool`. Post-edit reload: `reloadCatalog`, `reloadSpoolsLocal`.
-- **Data Fetching**: TanStack Query (`@tanstack/react-query`) for server-side cache and request management
-- **Fonts**: Inter via `@expo-google-fonts/inter`
-- **Animations**: `react-native-reanimated` for spring animations — SpoolCard entry stagger (index-based delay), scanner mode pill slide, AddSheet spring+fade, PressableScale tap feedback
-- **Haptics**: `expo-haptics` for tactile feedback
-- **i18n**: `i18next` + `react-i18next` with English and German translations in `locales/`
+The mobile application is built with **Expo SDK 54 / React Native 0.81** and **TypeScript**. It leverages `expo-router` for file-based navigation, providing a structured approach to screens such as onboarding, main tabs (Spools, Favorites, Scanner, Settings), and detail/form modals for spools, filaments, and manufacturers.
+
+**State Management**: `AppContext` serves as the central state boundary, abstracting data operations from UI components. It provides full CRUD functionalities for managing local and remote data.
+**Data Fetching**: `TanStack Query` is used for efficient server-side caching and request management.
+**UI/UX**: Features a Dark Glass UI theme with `react-native-reanimated` for smooth animations, `expo-haptics` for tactile feedback, and `i18next` for internationalization (English and German).
 
 ### Data Layer
 
-Three-layer architecture: API → Repository → Domain
-
-1. **Domain Models** (`src/domain/models.ts`): Pure TypeScript interfaces. No imports from DB or API layers. Includes `SyncState` enum (`synced | dirty | pending_push | conflict`).
-
-2. **API Client** (`src/data/api/SpoolmanClient.ts`): Stateless HTTP client. Calls Spoolman REST API endpoints. All functions receive `baseUrl` as a parameter. Handles timeout (8s), cleartext HTTP, and typed network errors.
-
-3. **Repositories** (`src/data/repositories/`): `SpoolRepository`, `FilamentRepository`, `ManufacturerRepository`. Use Drizzle ORM queries against local SQLite. No platform checks — platform differences are handled at the DB client level. All repos expose `createLocal()`, `updateLocal()`, `deleteByLocalId()` for offline-first CRUD.
-
-4. **CatalogService** (`src/features/catalog/CatalogService.ts`): Thin coordinator for catalog CRUD. Delegates to repositories. Provides `MATERIALS` constant. Guards against `isPersistenceEnabled === false`.
-
-5. **SyncService** (`src/data/sync/SyncService.ts`): Orchestrates pull/push between local DB and external system.
-   - `pull(baseUrl)` — fetch remote data, merge into local DB
-   - `push(baseUrl)` — push dirty local records to server
-   - `sync(baseUrl)` — push first, then pull (preserves local changes)
-   - **Conflict strategy**: Server wins on all remote fields. `isFavorite` is local-only, never overwritten. Last-write-wins from server perspective when conflicts occur.
-   - Accepts `IExternalFilamentSystemPort` (injected from `AppContext.tsx`) — no direct Spoolman dependency.
-
-6. **Hexagonal Port (`src/core/ports/index.ts`)**: `IExternalFilamentSystemPort` DTOs use backend-neutral camelCase field names (`RemoteManufacturerDTO`, `RemoteFilamentDTO.colorHex`, `RemoteSpoolDTO.remainingWeight`, etc.). `ExternalSystem = "spoolman" | "filabro"`. The `SpoolmanAdapter` (`src/adapters/spoolman/index.ts`) is the **only** file that maps Spoolman snake_case API fields to/from these neutral DTOs. Swap adapter to add a new backend without touching SyncUseCase.
+A three-layer architecture (API → Repository → Domain) ensures clean separation of concerns:
+1.  **Domain Models**: Pure TypeScript interfaces defining data structures.
+2.  **API Client**: `SpoolmanClient` handles stateless HTTP communication with the Spoolman REST API, supporting cleartext HTTP for local network access.
+3.  **Repositories**: Manage data persistence using `drizzle-orm` with `expo-sqlite` for local storage, providing offline-first CRUD capabilities.
+4.  **CatalogService**: Coordinates CRUD operations across repositories.
+5.  **SyncService**: Orchestrates data synchronization between the local database and the external Spoolman server using a push-then-pull strategy. It employs a "server wins" conflict resolution policy for most fields, while `isFavorite` remains a local-only attribute.
+6.  **Hexagonal Port**: `IExternalFilamentSystemPort` uses backend-neutral DTOs, with `SpoolmanAdapter` handling the mapping between Spoolman's snake_case API fields and the application's camelCase domain models, allowing for flexible backend integration.
 
 ### Local Database
 
-- **Engine**: `expo-sqlite` (SQLite on-device)
-- **ORM**: `drizzle-orm` with SQLite dialect
-- **Schema** (`src/data/db/schema.ts`): Tables for `manufacturers`, `filaments`, `spools`, `syncMeta`, `conflict_snapshots`, `usage_events`, `spool_stats`
-  - manufacturers: `website` text field
-  - filaments: `printTempMin` int, `printTempMax` int, `density` real
-  - spools: `displayName` text, `qrCode` text, `nfcTagId` text, `archived` int
-  - spool_stats: `remaining_weight` int (Phase 4 source of truth for weight), `updated_at` int
-  - usage_events: append-only weight audit log (Phase 4)
-- **Migrations**: Versioned SQL migration array in `src/data/db/client.ts`. Append-only — never edit. `CURRENT_SCHEMA_VERSION = 6`.
-  - v1: base schema
-  - v2: website, printTemp, displayName, qrCode, nfcTagId fields
-  - v3: conflict_snapshots table
-  - v4: usage_events + spool_stats tables; seeds spool_stats from spools.remaining_weight
-  - v5: 6 performance indexes (archived, filament_local_id, qr_code, nfc_tag_id, last_modified_at, manufacturer_local_id)
-  - v6: filaments table adds `paid_price` real and `shop` text (local-only, never synced to Spoolman)
-- **Phase 5 — Batch-first sync**: `pullWithConflictPolicy()` in `SyncUseCase` now pre-fetches all manufacturer/filament/spool records in batch before the entity loop. O(6) total DB queries instead of O(5N). Uses `getMapByRemoteIds()` on each repo for O(1) map lookups.
-- **Phase 5 — JOIN views**: `SpoolRepository.getAllView()`, `getByLocalIdView()`, `getPagedView()` all use a single LEFT JOIN across spools + filaments + manufacturers + spool_stats. Eliminates N+1 query pattern.
-- **Phase 5 — Pagination**: `SpoolListUseCase` provides `listSpoolsPage(page, pageSize)`. AppContext exposes `loadNextPage()`, `hasMoreSpools`, `isLoadingMoreSpools`. FlatList in index.tsx uses `onEndReached` to load more.
-- **Phase 5 — Indexed lookups**: `findByQrCode(qr)` and `findByNfcTagId(tagId)` use O(log n) indexed queries. Exposed in AppContext as `findSpoolByQrCode` / `findSpoolByNfcTagId`.
-- **Weight source of truth**: `spool_stats.remaining_weight` (Phase 4+). `spools.remaining_weight` is legacy/init-only and used for remote identity comparison in sync.
-- **SpoolSyncRecord** extended with all identity-check fields — no second `getByLocalId()` needed in sync loop.
-- **Phase 5.1B — Edit UI screens**: Three edit modal screens (`edit-spool`, `edit-filament`, `edit-manufacturer`) accessible from the spool detail. Spool detail has a pencil icon (→ edit-spool) and a filament card edit icon (→ edit-filament). After save, `reloadCatalog()` + `reloadSpoolsLocal()` refresh state from the local DB. New bridge fields in `lib/spoolman.ts Spool`: `_filamentLocalId`, `_displayName`, `_qrCode`, `_nfcTagId`. Filament's `paidPrice`/`shop` displayed in spool detail.
-- **Phase 5.2 — Color name**: `Filament` domain gains `colorName?: string`. DB migration v7 adds `color_name TEXT` column to filaments. Edit Filament screen now shows a preset chip picker (13 color names: Black/White/Gray/Red/Green/Blue/Yellow/Orange/Purple/Pink/Brown/Natural/Transparent) plus a free-text color name input, followed by the optional hex input. Spool detail color row shows `colorName` as primary label and `#hex` as small secondary text when both exist. Demo data seeded with `colorName` on all 6 filaments. `colorName` is local-only — not synced to Spoolman.
-- **Web demo mode**: When `isPersistenceEnabled === false`, AppContext seeds demo data. All CRUD and weight edits work in-memory. A `WebPreviewBanner` shows on web.
-- **Error classes** (`src/data/api/errors.ts`): `NetworkError`, `TimeoutError`, `ApiError`, `ParseError`, `UnsupportedFeatureError` + `classifyFetchError()` utility.
+The app uses `expo-sqlite` with `drizzle-orm` for local data persistence. The schema includes tables for `manufacturers`, `filaments`, `spools`, `syncMeta`, `conflict_snapshots`, `usage_events`, and `spool_stats`. Database migrations are versioned and append-only. Performance optimizations include batch-first synchronization, JOIN views for efficient data retrieval, pagination for lists, and indexed lookups for QR/NFC codes. `spool_stats.remaining_weight` is the primary source of truth for spool weight. A web demo mode provides in-memory CRUD when persistence is disabled.
 
 ### Storage
 
-- **Sensitive data** (server URL): `expo-secure-store` on native, `AsyncStorage` on web
-- **App preferences** (theme, language, onboarding state, last sync): `AsyncStorage` via `lib/storage.ts`
-- Storage keys are centralized in `STORAGE_KEYS` constant
+-   **Sensitive Data**: `expo-secure-store` is used for securely storing sensitive information like the server URL.
+-   **App Preferences**: `AsyncStorage` handles non-sensitive preferences such as theme, language, and onboarding status.
 
 ### Backend (Express Server)
 
-- Lightweight Express 5 server in `server/` directory
-- Used for Replit hosting/proxy — serves static web build or acts as a relay
-- CORS configured for Replit dev/deployment domains and localhost
-- Routes defined in `server/routes.ts` (currently minimal — `/api` prefix)
-- Shared schema in `shared/schema.ts` uses Drizzle with PostgreSQL dialect (users table with UUID primary keys)
-- `drizzle.config.ts` points to PostgreSQL via `DATABASE_URL` env variable
+A lightweight **Express 5** server is included, primarily for Replit hosting/proxy purposes, serving static web builds or acting as a relay. It uses Drizzle ORM with a PostgreSQL dialect for server-side storage (currently minimal, with a `users` table).
 
 ### Theme System
 
-- Dark and light color tokens in `constants/colors.ts`
-- Accent color: `#3B82F6` (cool blue)
-- Dark mode: deep blue-gray backgrounds (`#0B0F1A`, `#111827`, `#1E293B`)
-- Glass UI primitives: `GlassCard` (blur + translucent), `FAB` (floating action button), `GradientBackground`
-- Theme preference persisted in AsyncStorage, accessible via `useAppTheme()` hook from AppContext
-- Automatic system theme detection via `useColorScheme()`
-
-### UI Components
-
-- `components/ui/GlassCard.tsx` — semi-transparent card with blur (native) / CSS backdrop-filter (web)
-- `components/ui/FAB.tsx` — floating action button with accent color, positioned bottom-right
-- `components/ui/GradientBackground.tsx` — dark gradient background wrapper
-- `components/SpoolCard.tsx` — glass-styled spool list card with color bar, progress, badges, favorite. Accepts `index` prop for staggered entry animation.
-- `components/ui/PressableScale.tsx` — reusable animated pressable with spring scale+opacity feedback
-- Bottom sheet (AddSheet): Reanimated spring slide-up + backdrop fade, `animationType="none"` on Modal for full animation control
-- Scanner mode switcher: animated pill (Reanimated `useSharedValue`) slides between QR/NFC tabs; uses accent color #3B82F6 throughout (no legacy teal)
-
----
+The app features a dark and light theme with an accent color of `#3B82F6`. Dark mode utilizes deep blue-gray backgrounds. Key UI primitives like `GlassCard`, `FAB`, and `GradientBackground` contribute to the distinct Glass UI aesthetic. Theme preferences are persisted and include automatic system theme detection.
 
 ## External Dependencies
 
-### Spoolman API (Primary Integration)
+### Spoolman API
 
-The app's core data source. Self-hosted on local network.
-
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/api/v1/health` | GET | Health check + version |
-| `/api/v1/spool` | GET | List all spools (with `?expand[]=filament`) |
-| `/api/v1/spool/{id}` | GET | Single spool detail |
-| `/api/v1/spool/{id}` | PATCH | Update spool fields (e.g., `remaining_weight`) |
-
-- Default server URL: `http://192.168.50.10:7912`
-- HTTP cleartext is explicitly supported (Android `usesCleartextTraffic: true`)
-- The app handles HTTP in local network; no HTTPS required for Spoolman
+The primary data source for the application, typically self-hosted on a local network.
+-   **Endpoints**: `/api/v1/health`, `/api/v1/spool` (GET, PATCH), `/api/v1/spool/{id}` (GET, PATCH).
+-   **Default Server URL**: `http://192.168.50.10:7912`.
+-   Supports HTTP cleartext for local network communication.
 
 ### Key Expo/React Native Packages
 
-| Package | Purpose |
-|---|---|
-| `expo-camera` | Barcode/QR scanning in Scanner tab |
-| `react-native-nfc-manager` | NFC tag reading **and writing** (Dev Client/EAS build only; graceful fallback in Expo Go and web). Tag format: `filabro:v1:<spoolLocalId>`. Scanner handles both legacy numeric-remoteId tags and new FilaBro localId tags. `app/nfc-write.tsx` provisions NFC tags for a spool using `writeTag(localId)`. |
-| `expo-secure-store` | Secure storage for server URL |
-| `expo-sqlite` | Local SQLite database |
-| `expo-haptics` | Tactile feedback |
-| `expo-image-picker` | Image selection |
-| `expo-blur` | Blur effects for tab bar (iOS) |
-| `expo-glass-effect` | Liquid glass tab bar (iOS 26+) |
-| `expo-linear-gradient` | Gradient UI elements |
-| `expo-sharing` | Share functionality |
-| `react-native-reanimated` | Smooth animations |
-| `react-native-gesture-handler` | Gesture support |
-| `react-native-keyboard-controller` | Keyboard-aware scroll |
-| `react-native-safe-area-context` | Safe area insets |
+-   `expo-camera`: Barcode/QR scanning.
+-   `react-native-nfc-manager`: NFC tag reading and writing (`filabro:v1:<spoolLocalId>`).
+-   `expo-secure-store`: Secure storage.
+-   `expo-sqlite`: Local SQLite database.
+-   `expo-haptics`: Tactile feedback.
+-   `react-native-reanimated`: Smooth animations.
+-   `i18next` & `react-i18next`: Internationalization (English, German).
 
 ### Database (PostgreSQL)
 
-- Used by the Express server via Drizzle ORM (`drizzle-orm/pg-core`)
-- Requires `DATABASE_URL` environment variable
-- Currently only has a `users` table (minimal server-side storage)
-- Run `npm run db:push` to sync schema to the database
-
-### Internationalization
-
-- `i18next` + `react-i18next`
-- Supported languages: English (`locales/en.ts`), German (`locales/de.ts`)
-- Language preference persisted and changeable in Settings
-- **i18n rules**: No em-dashes (—) in visible UI text; use `. ` or `: ` instead. German strings use proper umlauts (ö, ü, ä, Ö, Ü, Ä). Compound noun hyphens (e.g. "Filament-Sammlung") are acceptable; sentence-level dashes are not.
+-   Used by the Express server via Drizzle ORM.
+-   Requires `DATABASE_URL` environment variable.
 
 ### Build & Tooling
 
-- **Metro** bundler (Expo default)
-- **Babel** with `babel-preset-expo` and `unstable_transformImportMeta`
-- **ESBuild** for server production build (`server:build` script)
-- **patch-package** runs on `postinstall` for any native patches
-- **Replit-specific**: `REPLIT_DEV_DOMAIN` and `EXPO_PUBLIC_DOMAIN` env vars used for dev URL configuration in `expo:dev` script and `lib/query-client.ts`
+-   **Metro** bundler, **Babel**, and **ESBuild**.
+-   `patch-package` for applying native patches.
+-   Replit-specific environment variables (`REPLIT_DEV_DOMAIN`, `EXPO_PUBLIC_DOMAIN`) for development.
