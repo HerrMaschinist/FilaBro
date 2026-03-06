@@ -31,7 +31,7 @@
 import * as SyncService from "@/src/data/sync/SyncService";
 import { updateSyncMeta } from "@/src/data/sync/SyncService";
 import type { SpoolView } from "@/src/domain/models";
-import type { SyncResult } from "@/src/core/ports/index";
+import type { IExternalFilamentSystemPort, SyncResult } from "@/src/core/ports/index";
 import { ManufacturerRepository } from "@/src/data/repositories/ManufacturerRepository";
 import { FilamentRepository } from "@/src/data/repositories/FilamentRepository";
 import { SpoolRepository } from "@/src/data/repositories/SpoolRepository";
@@ -40,7 +40,7 @@ import { SpoolStatsRepository } from "@/src/data/repositories/SpoolStatsReposito
 import { UsageEventRepository } from "@/src/data/repositories/UsageEventRepository";
 import { ConflictSnapshotRepository } from "@/src/data/repositories/ConflictSnapshotRepository";
 import { defaultConflictResolver } from "./conflict/ConflictResolver";
-import * as SpoolmanClient from "@/src/data/api/SpoolmanClient";
+import { SpoolmanAdapter } from "@/src/adapters/spoolman";
 
 function log(msg: string) {
   if (__DEV__) console.log(`[SyncUseCase] ${msg}`);
@@ -102,7 +102,10 @@ function isSpoolRemoteIdentical(
  * Phase 5: Uses batch pre-fetch + batch upsert for each entity type.
  * Reduces total DB queries from O(5N) to O(6) for a full sync.
  */
-async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
+async function pullWithConflictPolicy(
+  baseUrl: string,
+  port: IExternalFilamentSystemPort
+): Promise<SyncResult> {
   const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, errors: [] };
   const resolver = defaultConflictResolver;
   const now = Date.now();
@@ -111,7 +114,7 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
 
   // ── 1. Manufacturers ──────────────────────────────────────────────────────
   try {
-    const remoteVendors = await SpoolmanClient.getVendors(baseUrl);
+    const remoteVendors = await port.getVendors(baseUrl);
 
     // Phase 5: batch fetch all existing by remoteId → O(1) map lookup below
     const vendorRemoteIds = remoteVendors.map((v) => v.id);
@@ -171,7 +174,7 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
 
   // ── 2. Filaments ──────────────────────────────────────────────────────────
   try {
-    const remoteFilaments = await SpoolmanClient.getFilaments(baseUrl);
+    const remoteFilaments = await port.getFilaments(baseUrl);
 
     // Phase 5: batch pre-fetch manufacturer localIds for O(1) resolution
     const vendorRemoteIds = [
@@ -268,7 +271,7 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
 
   // ── 3. Spools ─────────────────────────────────────────────────────────────
   try {
-    const remoteSpools = await SpoolmanClient.getSpools(baseUrl);
+    const remoteSpools = await port.getSpools(baseUrl);
 
     // Phase 5: batch pre-fetch filament localIds for O(1) resolution
     const allFilamentRemoteIds = [
@@ -429,10 +432,15 @@ async function pullWithConflictPolicy(baseUrl: string): Promise<SyncResult> {
 export const SyncUseCase = {
   /**
    * Full sync: push local changes first, then pull with conflict policy.
+   * port defaults to SpoolmanAdapter; pass a different implementation to
+   * target a different backend without touching this file.
    */
-  async sync(serverUrl: string): Promise<SyncResult> {
+  async sync(
+    serverUrl: string,
+    port: IExternalFilamentSystemPort = SpoolmanAdapter
+  ): Promise<SyncResult> {
     const pushResult = await SyncService.push(serverUrl);
-    const pullResult = await pullWithConflictPolicy(serverUrl);
+    const pullResult = await pullWithConflictPolicy(serverUrl, port);
     return {
       pulled: pullResult.pulled,
       pushed: pushResult.pushed,
@@ -443,9 +451,13 @@ export const SyncUseCase = {
 
   /**
    * Conflict-aware pull. Local changes are never overwritten.
+   * port defaults to SpoolmanAdapter.
    */
-  async pull(serverUrl: string): Promise<SyncResult> {
-    return pullWithConflictPolicy(serverUrl);
+  async pull(
+    serverUrl: string,
+    port: IExternalFilamentSystemPort = SpoolmanAdapter
+  ): Promise<SyncResult> {
+    return pullWithConflictPolicy(serverUrl, port);
   },
 
   /**
