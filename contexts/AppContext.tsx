@@ -32,6 +32,7 @@ import type {
 import { isPersistenceEnabled } from "@/src/data/db/client";
 import { CatalogUseCase } from "@/src/core/application/CatalogUseCase";
 import { SyncUseCase } from "@/src/core/application/SyncUseCase";
+import { SpoolmanAdapter } from "@/src/adapters/spoolman";
 import { SpoolUseCase } from "@/src/core/application/SpoolUseCase";
 import { WeightUseCase } from "@/src/core/application/WeightUseCase";
 import { FilamentUseCase } from "@/src/core/application/FilamentUseCase";
@@ -347,7 +348,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSpoolsError(null);
 
     try {
-      const result = await SyncUseCase.sync(serverUrl);
+      const result = await SyncUseCase.sync(serverUrl, SpoolmanAdapter);
       const conflictCount = await SyncUseCase.getOpenConflictCount();
       setOpenConflictCount(conflictCount);
 

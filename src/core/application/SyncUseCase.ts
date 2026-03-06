@@ -40,7 +40,6 @@ import { SpoolStatsRepository } from "@/src/data/repositories/SpoolStatsReposito
 import { UsageEventRepository } from "@/src/data/repositories/UsageEventRepository";
 import { ConflictSnapshotRepository } from "@/src/data/repositories/ConflictSnapshotRepository";
 import { defaultConflictResolver } from "./conflict/ConflictResolver";
-import { SpoolmanAdapter } from "@/src/adapters/spoolman";
 
 function log(msg: string) {
   if (__DEV__) console.log(`[SyncUseCase] ${msg}`);
@@ -432,12 +431,11 @@ async function pullWithConflictPolicy(
 export const SyncUseCase = {
   /**
    * Full sync: push local changes first, then pull with conflict policy.
-   * port defaults to SpoolmanAdapter; pass a different implementation to
-   * target a different backend without touching this file.
+   * Pass the desired IExternalFilamentSystemPort implementation (e.g. SpoolmanAdapter).
    */
   async sync(
     serverUrl: string,
-    port: IExternalFilamentSystemPort = SpoolmanAdapter
+    port: IExternalFilamentSystemPort
   ): Promise<SyncResult> {
     const pushResult = await SyncService.push(serverUrl);
     const pullResult = await pullWithConflictPolicy(serverUrl, port);
@@ -451,11 +449,11 @@ export const SyncUseCase = {
 
   /**
    * Conflict-aware pull. Local changes are never overwritten.
-   * port defaults to SpoolmanAdapter.
+   * Pass the desired IExternalFilamentSystemPort implementation.
    */
   async pull(
     serverUrl: string,
-    port: IExternalFilamentSystemPort = SpoolmanAdapter
+    port: IExternalFilamentSystemPort
   ): Promise<SyncResult> {
     return pullWithConflictPolicy(serverUrl, port);
   },
