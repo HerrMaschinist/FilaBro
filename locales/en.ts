@@ -10,6 +10,7 @@ const en = {
     skip_hint: "You can connect a server later in Settings.",
     connected: "Connected",
     spoolman_version: "Spoolman v{{version}}",
+    server_version: "Server v{{version}}",
     error_type: {
       timeout: "Timeout. Server took too long to respond.",
       network: "Network unreachable. Check WiFi or VPN.",
@@ -33,7 +34,8 @@ const en = {
     no_spools_title: "No spools found",
     no_spools_sub: "Pull down to sync",
     no_server_title: "No server connected",
-    no_server_sub: "Configure a Spoolman server in Settings.",
+    no_server_sub: "Configure a FilaBase server in Settings.",
+    offline_mode_hint: "Offline mode — no server connected.",
     go_to_settings: "Go to Settings",
     error_title: "Cannot reach server",
     retry: "Retry",
@@ -104,6 +106,21 @@ const en = {
     nfc_write_subtitle: "Choose a spool to write to an NFC tag.",
     nfc_write_no_spools: "No active spools available. Add a spool first.",
     nfc_write_go: "Write NFC Tag",
+    code_conflict_title: "Code already assigned",
+    code_conflict_single: "This code is already assigned to the following spool:",
+    create_anyway: "Create new spool anyway",
+    later_cleanup: "Resolve later",
+    scan_history_title: "Scan History",
+    scan_history_empty: "No scans yet",
+    scan_source_qr: "QR",
+    scan_source_barcode: "Barcode",
+    scan_source_nfc_local: "NFC (FilaBro)",
+    scan_source_nfc_legacy: "NFC (Legacy)",
+    scan_source_nfc_remote: "NFC (Text)",
+    scan_res_none: "No match",
+    scan_res_single: "1 match",
+    scan_res_multiple: "Multiple matches",
+    scan_res_direct_open: "Direct open",
   },
   settings: {
     title: "Settings",
@@ -236,7 +253,7 @@ const en = {
     website: "Website",
     comment: "Comment",
     display_name: "Display name",
-    qr_code: "QR Code",
+    qr_code: "QR / Barcode",
     nfc_tag_id: "NFC Tag ID",
     print_temp_min: "Min print temp (°C)",
     print_temp_max: "Max print temp (°C)",
@@ -301,3 +318,4 @@ const en = {
 } as const;
 
 export default en;
+

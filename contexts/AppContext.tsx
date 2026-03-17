@@ -32,7 +32,7 @@ import type {
 import { isPersistenceEnabled } from "@/src/data/db/client";
 import { CatalogUseCase } from "@/src/core/application/CatalogUseCase";
 import { SyncUseCase } from "@/src/core/application/SyncUseCase";
-import { SpoolmanAdapter } from "@/src/adapters/spoolman";
+import { FilaBaseAdapter } from "@/src/adapters/filabase";
 import { SpoolUseCase } from "@/src/core/application/SpoolUseCase";
 import { WeightUseCase } from "@/src/core/application/WeightUseCase";
 import { FilamentUseCase } from "@/src/core/application/FilamentUseCase";
@@ -132,6 +132,8 @@ interface CreateSpoolData {
   comment?: string;
   displayName?: string;
   lotNr?: string;
+  qrCode?: string;
+  nfcTagId?: string;
 }
 
 interface AppContextValue {
@@ -157,6 +159,9 @@ interface AppContextValue {
   /** Phase 5: indexed QR / NFC lookup */
   findSpoolByQrCode: (qr: string) => Promise<Spool | null>;
   findSpoolByNfcTagId: (tagId: string) => Promise<Spool | null>;
+  /** Scanner multi-match: distinguishes 0 / 1 / N results */
+  findSpoolsByQrCode: (qr: string) => Promise<Spool[]>;
+  findSpoolsByNfcTagId: (tagId: string) => Promise<Spool[]>;
 
   favorites: number[];
   toggleFavorite: (id: number) => void;
@@ -348,7 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSpoolsError(null);
 
     try {
-      const result = await SyncUseCase.sync(serverUrl, SpoolmanAdapter);
+      const result = await SyncUseCase.sync(serverUrl, FilaBaseAdapter);
       const conflictCount = await SyncUseCase.getOpenConflictCount();
       setOpenConflictCount(conflictCount);
 
@@ -420,6 +425,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return view ? toViewSpool(view) : null;
   }, []);
 
+  /**
+   * Scanner multi-match: return ALL spools sharing the same qr_code.
+   * Used to distinguish 0 / 1 / N scan results without changing existing lookups.
+   */
+  const findSpoolsByQrCode = useCallback(async (qr: string): Promise<Spool[]> => {
+    if (!isPersistenceEnabled) return [];
+    const views = await SpoolListUseCase.findAllByQrCode(qr);
+    return views.map(toViewSpool);
+  }, []);
+
+  /**
+   * Scanner multi-match: return ALL spools sharing the same nfc_tag_id.
+   */
+  const findSpoolsByNfcTagId = useCallback(async (tagId: string): Promise<Spool[]> => {
+    if (!isPersistenceEnabled) return [];
+    const views = await SpoolListUseCase.findAllByNfcTagId(tagId);
+    return views.map(toViewSpool);
+  }, []);
+
   const favorites = useMemo(
     () => spools.filter((s) => s._isFavorite).map((s) => s.id),
     [spools]
@@ -485,7 +509,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await WeightUseCase.adjustRemaining(spool._localId, weight, "manual");
 
       if (serverUrl) {
-        SyncUseCase.pushOne(serverUrl, spool._localId, SpoolmanAdapter)
+        SyncUseCase.pushOne(serverUrl, spool._localId, FilaBaseAdapter)
           .then(() => {
             setIsOnline(true);
             setDirtySpoolIds((prev) => {
@@ -505,7 +529,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const syncPending = useCallback(async () => {
     if (!serverUrl) return;
     try {
-      await SyncUseCase.push(serverUrl, SpoolmanAdapter);
+      await SyncUseCase.push(serverUrl, FilaBaseAdapter);
       // Phase 5: reload first page after push
       await loadFirstPage();
       setIsOnline(true);
@@ -846,6 +870,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loadNextPage,
       findSpoolByQrCode,
       findSpoolByNfcTagId,
+      findSpoolsByQrCode,
+      findSpoolsByNfcTagId,
       favorites,
       toggleFavorite,
       isFavorite,
@@ -894,6 +920,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loadNextPage,
       findSpoolByQrCode,
       findSpoolByNfcTagId,
+      findSpoolsByQrCode,
+      findSpoolsByNfcTagId,
       favorites,
       toggleFavorite,
       isFavorite,

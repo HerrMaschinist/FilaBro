@@ -11,7 +11,7 @@ import {
   Modal,
   FlatList,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -22,13 +22,19 @@ export default function AddSpoolScreen() {
   const { t } = useTranslation();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { qrCode: qrCodeParam } = useLocalSearchParams<{ qrCode?: string | string[] }>();
   const { manufacturers, filaments, createSpool } = useApp();
+
+  const initialQrCode = Array.isArray(qrCodeParam)
+    ? (qrCodeParam[0] ?? "").trim()
+    : (qrCodeParam ?? "").trim();
 
   const [filamentLocalId, setFilamentLocalId] = useState("");
   const [initialWeight, setInitialWeight] = useState("");
   const [spoolWeight, setSpoolWeight] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [lotNr, setLotNr] = useState("");
+  const [qrCode, setQrCode] = useState(initialQrCode);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [showFilamentPicker, setShowFilamentPicker] = useState(false);
@@ -75,7 +81,7 @@ export default function AddSpoolScreen() {
 
     setSaving(true);
     try {
-      const ok = await createSpool({
+            const ok = await createSpool({
         filamentLocalId,
         initialWeight:
           parsedWeight ?? selectedFilament?.weight ?? 1000,
@@ -86,6 +92,7 @@ export default function AddSpoolScreen() {
         comment: comment.trim() || undefined,
         displayName: displayName.trim() || undefined,
         lotNr: lotNr.trim() || undefined,
+        qrCode: qrCode.trim() || undefined,
       });
 
       if (ok) {
@@ -278,6 +285,24 @@ export default function AddSpoolScreen() {
             onChangeText={setLotNr}
             placeholder={`${t("form.lot")} (${t("form.optional")})`}
             placeholderTextColor={colors.textTertiary}
+          />
+
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {t("form.qr_code")}
+          </Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.surfaceElevated,
+                color: colors.text,
+              },
+            ]}
+            value={qrCode}
+            onChangeText={setQrCode}
+            placeholder={`${t("form.qr_code")} (${t("form.optional")})`}
+            placeholderTextColor={colors.textTertiary}
+            testID="input-spool-qr"
           />
 
           <Text style={[styles.label, { color: colors.textSecondary }]}>

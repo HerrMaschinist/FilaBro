@@ -27,7 +27,7 @@ export const filaments = sqliteTable("filaments", {
   material: text("material").notNull(),
   /** Legacy color name field (v7). Superseded by colorNameRaw. Kept to avoid DROP. */
   colorName: text("color_name"),
-  /** Spoolman-sourced hex — written by sync engine, not user edits. */
+  /** Remote-sourced hex — written by sync engine, not user edits. */
   colorHex: text("color_hex"),
   /** v8: Exactly what the user typed or selected. Local-only. */
   colorNameRaw: text("color_name_raw"),
@@ -42,9 +42,9 @@ export const filaments = sqliteTable("filaments", {
   printTempMax: integer("print_temp_max"),
   density: real("density"),
   comment: text("comment"),
-  /** Amount paid — local-only, never synced to Spoolman. */
+  /** Amount paid — local-only, never synced to Remote. */
   paidPrice: real("paid_price"),
-  /** Shop/vendor name — local-only, never synced to Spoolman. */
+  /** Shop/vendor name — local-only, never synced to Remote. */
   shop: text("shop"),
   /** v8: FilamentSpec fields — local-only. */
   diameterMm: real("diameter_mm"),
@@ -81,7 +81,7 @@ export const spools = sqliteTable(
     lastUsed: text("last_used"),
     firstUsed: text("first_used"),
     registered: text("registered"),
-    /** Local-only, never synced to Spoolman */
+    /** Local-only, never synced to Remote */
     isFavorite: integer("is_favorite").notNull().default(0),
     syncState: text("sync_state").notNull().default("synced"),
     /** JSON string: string[] of dirty field names */

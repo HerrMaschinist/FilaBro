@@ -88,6 +88,8 @@ export const CatalogService = {
     comment?: string;
     displayName?: string;
     lotNr?: string;
+    qrCode?: string;
+    nfcTagId?: string;
   }): Promise<Spool> {
     if (!isPersistenceEnabled) throw new Error("PERSISTENCE_DISABLED");
     const spool = await SpoolRepository.createLocal(data);

@@ -1,5 +1,5 @@
 /**
- * Spoolman HTTP API Client.
+ * FilaBase HTTP API Client (former Spoolman integration).
  *
  * Pure network layer — no DB imports, no state management.
  * All functions are stateless and receive baseUrl as a parameter.
@@ -22,7 +22,7 @@ export type NetworkErrorType =
   | "parse_error"
   | "unknown";
 
-export interface SpoolmanNetworkError extends Error {
+export interface FilaBaseNetworkError extends Error {
   errorType: NetworkErrorType;
   endpoint: string;
   statusCode?: number;
@@ -35,8 +35,8 @@ function makeNetworkError(
   endpoint: string,
   statusCode?: number,
   responseBody?: string
-): SpoolmanNetworkError {
-  const err = new Error(message) as SpoolmanNetworkError;
+): FilaBaseNetworkError {
+  const err = new Error(message) as FilaBaseNetworkError;
   err.errorType = type;
   err.endpoint = endpoint;
   if (statusCode !== undefined) err.statusCode = statusCode;
@@ -53,7 +53,7 @@ function normalizeBaseUrl(raw: string): string {
 function classifyFetchError(
   err: unknown,
   endpoint: string
-): SpoolmanNetworkError {
+): FilaBaseNetworkError {
   if (err instanceof Error) {
     if (err.name === "AbortError") {
       return makeNetworkError(
@@ -102,12 +102,12 @@ async function request<T>(
   const controller = new AbortController();
 
   const timer = setTimeout(() => {
-    if (__DEV__) console.log(`[SpoolmanClient] ⏱ Abort timeout: ${endpoint}`);
+    if (__DEV__) console.log(`[FilaBaseClient] ⏱ Abort timeout: ${endpoint}`);
     controller.abort();
   }, TIMEOUT_MS);
 
   if (__DEV__) {
-    console.log(`[SpoolmanClient] → ${options.method ?? "GET"} ${endpoint}`);
+    console.log(`[FilaBaseClient] → ${options.method ?? "GET"} ${endpoint}`);
   }
 
   let res: Response;
@@ -118,7 +118,7 @@ async function request<T>(
     const classified = classifyFetchError(err, endpoint);
     if (__DEV__) {
       console.log(
-        `[SpoolmanClient] ✗ ${classified.errorType}: ${classified.message}`
+        `[FilaBaseClient] ✗ ${classified.errorType}: ${classified.message}`
       );
     }
     throw classified;
@@ -127,7 +127,7 @@ async function request<T>(
   clearTimeout(timer);
 
   if (__DEV__) {
-    console.log(`[SpoolmanClient] ← ${res.status} ${endpoint}`);
+    console.log(`[FilaBaseClient] ← ${res.status} ${endpoint}`);
   }
 
   if (!res.ok) {
@@ -139,7 +139,7 @@ async function request<T>(
     }
     if (__DEV__) {
       console.log(
-        `[SpoolmanClient] ✗ HTTP ${res.status} ${endpoint}: ${body.slice(0, 200)}`
+        `[FilaBaseClient] ✗ HTTP ${res.status} ${endpoint}: ${body.slice(0, 200)}`
       );
     }
     throw makeNetworkError(

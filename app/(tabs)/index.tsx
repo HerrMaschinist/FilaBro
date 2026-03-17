@@ -26,6 +26,9 @@ import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { SpoolCard } from "@/components/SpoolCard";
 import { FAB } from "@/components/ui/FAB";
+import { AppHeader } from "@/components/ui/AppHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import type { Spool } from "@/lib/spoolViewTypes";
 
 type SortKey = "name" | "remaining" | "material" | "vendor";
@@ -176,89 +179,91 @@ export default function SpoolsScreen() {
 
   return (
     <View style={[s.container, { paddingTop: topInset }]}>
-      <View style={s.headerRow}>
-        <Text style={s.title}>{t("home.title")}</Text>
-        <View style={s.headerActions}>
-          {showNoServerBadge && (
-            <View
-              style={[
-                s.offlineBadge,
-                { backgroundColor: `${colors.textTertiary}15` },
-              ]}
-            >
-              <Ionicons
-                name="cloud-offline-outline"
-                size={14}
-                color={colors.textTertiary}
-              />
-              <Text
-                style={[s.offlineText, { color: colors.textTertiary }]}
+      <AppHeader
+        title={t("home.title")}
+        actions={
+          <>
+            {showNoServerBadge && (
+              <View
+                style={[
+                  s.offlineBadge,
+                  { backgroundColor: `${colors.textTertiary}15` },
+                ]}
               >
-                {t("home.no_server")}
-              </Text>
-            </View>
-          )}
-          {showOfflineBadge && (
-            <View
-              style={[
-                s.offlineBadge,
-                { backgroundColor: `${colors.warning}20` },
-              ]}
-            >
-              <Ionicons
-                name="cloud-offline-outline"
-                size={14}
-                color={colors.warning}
-              />
-              <Text style={[s.offlineText, { color: colors.warning }]}>
-                {t("home.offline")}
-              </Text>
-            </View>
-          )}
-          {pendingUpdates.length > 0 && (
+                <Ionicons
+                  name="cloud-offline-outline"
+                  size={14}
+                  color={colors.textTertiary}
+                />
+                <Text
+                  style={[s.offlineText, { color: colors.textTertiary }]}
+                >
+                  {t("home.no_server")}
+                </Text>
+              </View>
+            )}
+            {showOfflineBadge && (
+              <View
+                style={[
+                  s.offlineBadge,
+                  { backgroundColor: `${colors.warning}20` },
+                ]}
+              >
+                <Ionicons
+                  name="cloud-offline-outline"
+                  size={14}
+                  color={colors.warning}
+                />
+                <Text style={[s.offlineText, { color: colors.warning }]}>
+                  {t("home.offline")}
+                </Text>
+              </View>
+            )}
+            {pendingUpdates.length > 0 && (
+              <Pressable
+                onPress={() => {
+                  if (!serverUrl) {
+                    Alert.alert(
+                      t("home.no_server_title"),
+                      t("home.no_server_sub"),
+                      [{ text: t("common.ok") }]
+                    );
+                    return;
+                  }
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  syncPending();
+                }}
+                style={[
+                  s.syncBtn,
+                  { backgroundColor: `${colors.accent}15` },
+                ]}
+              >
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={16}
+                  color={colors.accent}
+                />
+                <Text style={[s.syncBtnText, { color: colors.accent }]}>
+                  {pendingUpdates.length}
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               onPress={() => {
-                if (!serverUrl) {
-                  Alert.alert(
-                    t("home.no_server_title"),
-                    t("home.no_server_sub"),
-                    [{ text: t("common.ok") }]
-                  );
-                  return;
-                }
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                syncPending();
+                setShowFilter(true);
               }}
-              style={[
-                s.syncBtn,
-                { backgroundColor: `${colors.accent}15` },
-              ]}
+              style={s.iconBtn}
             >
               <Ionicons
-                name="cloud-upload-outline"
-                size={16}
-                color={colors.accent}
+                name="options-outline"
+                size={22}
+                color={colors.textSecondary}
               />
-              <Text style={[s.syncBtnText, { color: colors.accent }]}>
-                {pendingUpdates.length}
-              </Text>
             </Pressable>
-          )}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowFilter(true);
-            }}
-            style={s.iconBtn}
-          >
-            <Ionicons
-              name="options-outline"
-              size={22}
-              color={colors.textSecondary}
-            />
-          </Pressable>
-        </View>
-      </View>
+          </>
+        }
+      />
 
       <View
         style={[
@@ -300,83 +305,53 @@ export default function SpoolsScreen() {
         </Text>
       )}
 
-      {connectionStatus === "no_server" &&
-        spools.length === 0 &&
-        !isSpoolsLoading && (
-          <View style={s.centered}>
-            <Ionicons
-              name="server-outline"
-              size={48}
-              color={colors.textTertiary}
-            />
-            <Text style={[s.emptyTitle, { color: colors.text }]}>
-              {t("home.no_server_title")}
+      {connectionStatus === "no_server" && (
+        <View
+          style={[
+            s.offlineBanner,
+            { backgroundColor: `${colors.textTertiary}12`, borderColor: `${colors.textTertiary}30` },
+          ]}
+        >
+          <Ionicons name="cloud-offline-outline" size={15} color={colors.textTertiary} />
+          <Text style={[s.offlineBannerText, { color: colors.textSecondary }]}>
+            {t("home.offline_mode_hint")}
+          </Text>
+          <Pressable onPress={() => router.push("/(tabs)/settings")} hitSlop={8}>
+            <Text style={[s.offlineBannerLink, { color: colors.accent }]}>
+              {t("home.go_to_settings")}
             </Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-              {t("home.no_server_sub")}
-            </Text>
-            <Pressable
-              style={[s.retryBtn, { backgroundColor: colors.accent }]}
-              onPress={() => router.push("/(tabs)/settings")}
-            >
-              <Text style={s.retryBtnText}>
-                {t("home.go_to_settings")}
-              </Text>
-            </Pressable>
-          </View>
-        )}
+          </Pressable>
+        </View>
+      )}
 
       {spoolsError &&
         spools.length === 0 &&
         connectionStatus !== "no_server" && (
-          <View style={s.centered}>
-            <Ionicons
-              name="wifi-outline"
-              size={48}
-              color={colors.textTertiary}
-            />
-            <Text style={[s.emptyTitle, { color: colors.text }]}>
-              {t("home.error_title")}
-            </Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-              {spoolsError}
-            </Text>
-            <Pressable
-              style={[s.retryBtn, { backgroundColor: colors.accent }]}
-              onPress={refreshSpools}
-            >
-              <Text style={s.retryBtnText}>{t("home.retry")}</Text>
-            </Pressable>
-          </View>
+          <EmptyState
+            icon="wifi-outline"
+            title={t("home.error_title")}
+            body={spoolsError}
+            action={
+              <PrimaryButton
+                label={t("home.retry")}
+                onPress={refreshSpools}
+                testID="retry-load"
+              />
+            }
+          />
         )}
 
       {!spoolsError && spools.length === 0 && isSpoolsLoading && (
-        <View style={s.centered}>
-          <ActivityIndicator color={colors.accent} size="large" />
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-            {t("home.loading")}
-          </Text>
-        </View>
+        <EmptyState loading title={t("home.loading")} />
       )}
 
-      {!spoolsError &&
-        spools.length === 0 &&
-        !isSpoolsLoading &&
-        connectionStatus !== "no_server" && (
-          <View style={s.centered}>
-            <Ionicons
-              name="layers-outline"
-              size={56}
-              color={colors.textTertiary}
-            />
-            <Text style={[s.emptyTitle, { color: colors.text }]}>
-              {t("home.no_spools_title")}
-            </Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-              {t("home.no_spools_sub")}
-            </Text>
-          </View>
-        )}
+      {!spoolsError && spools.length === 0 && !isSpoolsLoading && (
+        <EmptyState
+          icon="layers-outline"
+          title={t("home.no_spools_title")}
+          body={t("home.no_spools_sub")}
+        />
+      )}
 
       <FlatList
         data={filtered}
@@ -931,6 +906,26 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
     offlineText: {
       fontSize: 12,
       fontFamily: "Inter_500Medium",
+    },
+    offlineBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: 16,
+      marginBottom: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      gap: 8,
+    },
+    offlineBannerText: {
+      flex: 1,
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+    },
+    offlineBannerLink: {
+      fontSize: 13,
+      fontFamily: "Inter_600SemiBold",
     },
     syncBtn: {
       flexDirection: "row",

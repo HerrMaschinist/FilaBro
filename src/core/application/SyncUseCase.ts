@@ -59,7 +59,7 @@ function generateId(): string {
  * Phase 5: accepts SpoolSyncRecord instead of Spool — no need for a second
  * getByLocalId() call since SpoolSyncRecord now includes all identity fields.
  *
- * Only checks fields that Spoolman owns (never isFavorite, displayName, etc.)
+ * Only checks fields that the Remote owns (never isFavorite, displayName, etc.)
  */
 function isSpoolRemoteIdentical(
   local: SpoolSyncRecord,
@@ -95,7 +95,7 @@ function isSpoolRemoteIdentical(
 // ─── Pull orchestration ───────────────────────────────────────────────────────
 
 /**
- * Full conflict-aware pull from Spoolman.
+ * Full conflict-aware pull from Remote.
  * Processes manufacturers → filaments → spools (in dependency order).
  *
  * Phase 5: Uses batch pre-fetch + batch upsert for each entity type.
@@ -359,7 +359,7 @@ async function pullWithConflictPolicy(
             type: "adjustment",
             occurredAt: now,
             source: "sync",
-            note: `Sync from Spoolman (remoteId=${rs.id}, remaining=${remoteData.remainingWeight}g)`,
+            note: `Sync from Remote (remoteId=${rs.id}, remaining=${remoteData.remainingWeight}g)`,
           });
         }
 
@@ -405,7 +405,7 @@ async function pullWithConflictPolicy(
             type: "adjustment",
             occurredAt: now,
             source: "sync",
-            note: `Initial sync from Spoolman (remoteId=${ins.remoteId})`,
+            note: `Initial sync from Remote (remoteId=${ins.remoteId})`,
           });
         }
       }
@@ -431,7 +431,7 @@ async function pullWithConflictPolicy(
 export const SyncUseCase = {
   /**
    * Full sync: push local changes first, then pull with conflict policy.
-   * Pass the desired IExternalFilamentSystemPort implementation (e.g. SpoolmanAdapter).
+   * Pass the desired IExternalFilamentSystemPort implementation (e.g. FilaBaseAdapter).
    */
   async sync(
     serverUrl: string,

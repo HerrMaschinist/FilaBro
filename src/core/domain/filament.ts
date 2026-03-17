@@ -8,7 +8,7 @@
 
 /**
  * Local-only printing specification for a filament.
- * Never synced to Spoolman. Stored as flat columns in DB.
+ * Never synced to Remote. Stored as flat columns in DB.
  */
 export interface FilamentSpec {
   diameterMm?: number;
@@ -29,7 +29,7 @@ export interface Filament {
    *   colorNameRaw      — exactly what the user typed or selected
    *   colorNameNormalized — canonical English name (e.g. "Black", "Blue")
    *   colorHexNormalized — #RRGGBB from ColorNormalizer or user-entered hex
-   *   colorHex          — Spoolman-sourced hex (synced from remote, not user-editable)
+   *   colorHex          — Remote-sourced hex (synced from remote, not user-editable)
    */
   colorNameRaw?: string;
   colorNameNormalized?: string;
@@ -39,12 +39,12 @@ export interface Filament {
   manufacturerLocalId?: string;
   weight?: number;
   spoolWeight?: number;
-  /** Spoolman-sourced print temperature range. Local spec overrides are in spec. */
+  /** Remote-sourced print temperature range. Local spec overrides are in spec. */
   printTempMin?: number;
   printTempMax?: number;
   density?: number;
   comment?: string;
-  /** Local-only spec: diameter and local temp overrides. Not synced to Spoolman. */
+  /** Local-only spec: diameter and local temp overrides. Not synced to Remote. */
   spec?: FilamentSpec;
   /** Amount paid for this filament spool in the user's currency. Local-only. */
   paidPrice?: number;

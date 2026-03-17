@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import Constants from "expo-constants";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
-import { healthCheck } from "@/src/data/api/SpoolmanClient";
+import { healthCheck } from "@/src/data/api/FilaBaseClient";
 import {
   checkNfcAvailability,
   type NfcAvailability,

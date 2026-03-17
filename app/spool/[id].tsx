@@ -5,7 +5,6 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  ActivityIndicator,
   StyleSheet,
   Platform,
   Alert,
@@ -18,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import Colors from "@/constants/colors";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import type { Spool } from "@/lib/spoolViewTypes";
 
 function percentColor(pct: number, colors: typeof Colors.dark) {
@@ -172,6 +172,18 @@ export default function SpoolDetailScreen() {
               color={favorite ? colors.error : colors.textTertiary}
             />
           </Pressable>
+
+          {spool._localId && (
+            <Pressable
+              style={s.actionBtn}
+              onPress={() => router.push(`/edit-spool?localId=${spool._localId}`)}
+              hitSlop={12}
+              testID="bind-qr-barcode"
+            >
+              <Ionicons name="qr-code-outline" size={22} color={colors.textSecondary} />
+            </Pressable>
+          )}
+
           {spool._localId && Platform.OS !== "web" && (
             <Pressable
               style={s.actionBtn}
@@ -182,6 +194,7 @@ export default function SpoolDetailScreen() {
               <Ionicons name="radio-outline" size={22} color={colors.textSecondary} />
             </Pressable>
           )}
+
           <Pressable
             style={s.actionBtn}
             onPress={() => spool._localId && router.push(`/edit-spool?localId=${spool._localId}`)}
@@ -190,6 +203,7 @@ export default function SpoolDetailScreen() {
           >
             <Ionicons name="create-outline" size={22} color={colors.textSecondary} />
           </Pressable>
+
           <Pressable
             style={s.actionBtn}
             onPress={handleDelete}
@@ -252,21 +266,14 @@ export default function SpoolDetailScreen() {
               onSubmitEditing={saveWeight}
             />
             <Text style={[s.unit, { color: colors.textSecondary }]}>g</Text>
-            <Pressable
-              style={[
-                s.saveBtn,
-                { backgroundColor: colors.accent },
-                isSaving && { opacity: 0.5 },
-              ]}
+            <PrimaryButton
+              label={t("common.save")}
               onPress={saveWeight}
+              loading={isSaving}
               disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={s.saveBtnLabel}>{t("common.save")}</Text>
-              )}
-            </Pressable>
+              testID="save-weight"
+              style={s.saveBtn}
+            />
           </View>
           {saveError && (
             <Text style={[s.errorText, { color: colors.error }]}>{saveError}</Text>

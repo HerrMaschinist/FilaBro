@@ -442,6 +442,18 @@ export const SpoolRepository = {
   },
 
   /**
+   * Multi-match variant: returns ALL spools with the given qr_code.
+   * Used by the scanner to distinguish 0 / 1 / N results.
+   * Keeps findByQrCode() unchanged so callers that need only one result
+   * are not affected.
+   */
+  async findAllByQrCode(qr: string): Promise<SpoolView[]> {
+    const rows = await buildJoinQuery()
+      .where(eq(spools.qrCode, qr));
+    return rows.map((r) => rowToSpoolView(r as JoinRow));
+  },
+
+  /**
    * Phase 5: indexed lookup by nfc_tag_id column.
    * Uses idx_spools_nfc_tag_id index for O(log n).
    */
@@ -450,6 +462,16 @@ export const SpoolRepository = {
       .where(eq(spools.nfcTagId, tagId))
       .limit(1);
     return rows[0] ? rowToSpoolView(rows[0] as JoinRow) : null;
+  },
+
+  /**
+   * Multi-match variant: returns ALL spools with the given nfc_tag_id.
+   * Used by the scanner when a plain NFC tag payload is used as a lookup key.
+   */
+  async findAllByNfcTagId(tagId: string): Promise<SpoolView[]> {
+    const rows = await buildJoinQuery()
+      .where(eq(spools.nfcTagId, tagId));
+    return rows.map((r) => rowToSpoolView(r as JoinRow));
   },
 
   /**
