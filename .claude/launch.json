@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Expo Dev Server",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "npm", "run", "start"],
+      "port": 8081
+    },
+    {
+      "name": "Backend Server (Express/tsx)",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "npm", "run", "server:dev"],
+      "port": 5000
+    }
+  ]
+}

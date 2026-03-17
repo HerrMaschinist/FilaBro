@@ -26,6 +26,7 @@ import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { SpoolCard } from "@/components/SpoolCard";
 import { FAB } from "@/components/ui/FAB";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { Spool } from "@/lib/spoolViewTypes";
 
 type SortKey = "name" | "remaining" | "material" | "vendor";
@@ -303,79 +304,44 @@ export default function SpoolsScreen() {
       {connectionStatus === "no_server" &&
         spools.length === 0 &&
         !isSpoolsLoading && (
-          <View style={s.centered}>
-            <Ionicons
-              name="server-outline"
-              size={48}
-              color={colors.textTertiary}
-            />
-            <Text style={[s.emptyTitle, { color: colors.text }]}>
-              {t("home.no_server_title")}
-            </Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-              {t("home.no_server_sub")}
-            </Text>
-            <Pressable
-              style={[s.retryBtn, { backgroundColor: colors.accent }]}
-              onPress={() => router.push("/(tabs)/settings")}
-            >
-              <Text style={s.retryBtnText}>
-                {t("home.go_to_settings")}
-              </Text>
-            </Pressable>
-          </View>
+          <EmptyState
+            icon="server-outline"
+            title={t("home.no_server_title")}
+            message={t("home.no_server_sub")}
+            actionLabel={t("home.go_to_settings")}
+            onAction={() => router.push("/(tabs)/settings")}
+          />
         )}
 
       {spoolsError &&
         spools.length === 0 &&
         connectionStatus !== "no_server" && (
-          <View style={s.centered}>
-            <Ionicons
-              name="wifi-outline"
-              size={48}
-              color={colors.textTertiary}
-            />
-            <Text style={[s.emptyTitle, { color: colors.text }]}>
-              {t("home.error_title")}
-            </Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-              {spoolsError}
-            </Text>
-            <Pressable
-              style={[s.retryBtn, { backgroundColor: colors.accent }]}
-              onPress={refreshSpools}
-            >
-              <Text style={s.retryBtnText}>{t("home.retry")}</Text>
-            </Pressable>
-          </View>
+          <EmptyState
+            icon="wifi-outline"
+            title={t("home.error_title")}
+            message={spoolsError}
+            actionLabel={t("home.retry")}
+            onAction={refreshSpools}
+          />
         )}
 
       {!spoolsError && spools.length === 0 && isSpoolsLoading && (
-        <View style={s.centered}>
-          <ActivityIndicator color={colors.accent} size="large" />
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-            {t("home.loading")}
-          </Text>
-        </View>
+        <EmptyState
+          title=""
+          message={t("home.loading")}
+          loading
+        />
       )}
 
       {!spoolsError &&
         spools.length === 0 &&
         !isSpoolsLoading &&
         connectionStatus !== "no_server" && (
-          <View style={s.centered}>
-            <Ionicons
-              name="layers-outline"
-              size={56}
-              color={colors.textTertiary}
-            />
-            <Text style={[s.emptyTitle, { color: colors.text }]}>
-              {t("home.no_spools_title")}
-            </Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-              {t("home.no_spools_sub")}
-            </Text>
-          </View>
+          <EmptyState
+            icon="layers-outline"
+            title={t("home.no_spools_title")}
+            message={t("home.no_spools_sub")}
+          />
         )}
 
       <FlatList
@@ -969,35 +935,6 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       paddingBottom: 4,
     },
     list: { paddingTop: 4 },
-    centered: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-      paddingHorizontal: 32,
-      paddingTop: 60,
-    },
-    emptyTitle: {
-      fontSize: 20,
-      fontFamily: "Inter_600SemiBold",
-    },
-    emptyText: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
-      textAlign: "center",
-      lineHeight: 20,
-    },
-    retryBtn: {
-      borderRadius: 12,
-      paddingHorizontal: 24,
-      paddingVertical: 12,
-      marginTop: 4,
-    },
-    retryBtnText: {
-      color: "#000",
-      fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
-    },
     modalOverlay: {
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.5)",
