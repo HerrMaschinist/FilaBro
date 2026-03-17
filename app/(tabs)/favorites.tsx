@@ -8,10 +8,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { SpoolCard } from "@/components/SpoolCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { fontSize, fontWeight } from "@/constants/ui";
 import type { Spool } from "@/lib/spoolViewTypes";
 
 export default function FavoritesScreen() {
@@ -44,13 +45,11 @@ export default function FavoritesScreen() {
       </View>
 
       {favoriteSpools.length === 0 ? (
-        <View style={s.empty}>
-          <Ionicons name="heart-outline" size={64} color={colors.textTertiary} />
-          <Text style={[s.emptyTitle, { color: colors.text }]}>{t("favorites.empty_title")}</Text>
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-            {t("favorites.empty_sub")}
-          </Text>
-        </View>
+        <EmptyState
+          icon="heart-outline"
+          title={t("favorites.empty_title")}
+          message={t("favorites.empty_sub")}
+        />
       ) : (
         <FlatList
           data={favoriteSpools}
@@ -90,33 +89,16 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       paddingBottom: 12,
     },
     title: {
-      fontSize: 32,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.h1,
+      fontFamily: fontWeight.bold,
       color: colors.text,
       letterSpacing: -1,
     },
     count: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.regular,
       paddingBottom: 4,
     },
     list: { paddingTop: 4 },
-    empty: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-      paddingHorizontal: 40,
-    },
-    emptyTitle: {
-      fontSize: 22,
-      fontFamily: "Inter_600SemiBold",
-    },
-    emptyText: {
-      fontSize: 15,
-      fontFamily: "Inter_400Regular",
-      textAlign: "center",
-      lineHeight: 22,
-    },
   });
 }

@@ -18,6 +18,8 @@ import { useTranslation } from "react-i18next";
 import Colors from "@/constants/colors";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { fontSize, fontWeight } from "@/constants/ui";
 import type { Spool } from "@/lib/spoolViewTypes";
 
 function percentColor(pct: number, colors: typeof Colors.dark) {
@@ -119,11 +121,9 @@ export default function SpoolDetailScreen() {
 
   if (!spool) {
     return (
-      <View style={[s.center, { backgroundColor: colors.background }]}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Stack.Screen options={{ title: t("detail.not_found") }} />
-        <Text style={[s.notFound, { color: colors.textSecondary }]}>
-          {t("detail.not_found")}
-        </Text>
+        <EmptyState title={t("detail.not_found")} message="" />
       </View>
     );
   }
@@ -396,8 +396,8 @@ const ir = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   label: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
+    fontSize: fontSize.base,
+    fontFamily: fontWeight.regular,
     flex: 1,
   },
   valueRow: {
@@ -417,13 +417,13 @@ const ir = StyleSheet.create({
     flexShrink: 1,
   },
   value: {
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
+    fontSize: fontSize.md,
+    fontFamily: fontWeight.medium,
     textAlign: "right",
   },
   subValue: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
+    fontSize: fontSize.xs,
+    fontFamily: fontWeight.regular,
     textAlign: "right",
     marginTop: 1,
   },
@@ -431,15 +431,6 @@ const ir = StyleSheet.create({
 
 function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
   return StyleSheet.create({
-    center: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    notFound: {
-      fontSize: 16,
-      fontFamily: "Inter_400Regular",
-    },
     content: {
       paddingHorizontal: 16,
     },
@@ -454,14 +445,14 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       marginBottom: 16,
     },
     title: {
-      fontSize: 22,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.h2,
+      fontFamily: fontWeight.bold,
       letterSpacing: -0.5,
       flexShrink: 1,
     },
     sub: {
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.regular,
       marginTop: 2,
     },
     headerActions: {
@@ -485,8 +476,8 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       padding: 16,
     },
     cardTitle: {
-      fontSize: 11,
-      fontFamily: "Inter_600SemiBold",
+      fontSize: fontSize.xs,
+      fontFamily: fontWeight.semibold,
       letterSpacing: 1,
       textTransform: "uppercase" as const,
       marginBottom: 12,
@@ -503,12 +494,12 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       marginBottom: 8,
     },
     barLabel: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.medium,
     },
     barPct: {
-      fontSize: 13,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.bold,
     },
     track: {
       height: 10,
@@ -527,11 +518,11 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
     },
     weightNum: {
       fontSize: 28,
-      fontFamily: "Inter_700Bold",
+      fontFamily: fontWeight.bold,
     },
     weightTotal: {
-      fontSize: 15,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.lg,
+      fontFamily: fontWeight.regular,
     },
     inputRow: {
       flexDirection: "row",
@@ -544,12 +535,12 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       borderRadius: 10,
       paddingHorizontal: 12,
       paddingVertical: 10,
-      fontSize: 18,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.xl,
+      fontFamily: fontWeight.medium,
     },
     unit: {
       fontSize: 16,
-      fontFamily: "Inter_500Medium",
+      fontFamily: fontWeight.medium,
     },
     saveBtn: {
       paddingHorizontal: 20,
@@ -561,13 +552,13 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
     },
     saveBtnLabel: {
       color: "#fff",
-      fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
+      fontSize: fontSize.lg,
+      fontFamily: fontWeight.semibold,
     },
     errorText: {
       marginTop: 8,
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.regular,
     },
   });
 }

@@ -29,6 +29,8 @@ import {
   stopScan,
   type NfcAvailability,
 } from "@/src/features/nfc";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { fontSize, fontWeight } from "@/constants/ui";
 
 type ScanMode = "qr" | "nfc";
 type NfcScanState = "idle" | "checking" | "scanning" | "success" | "error";
@@ -388,7 +390,7 @@ export default function ScannerScreen() {
           <Ionicons name="qr-code-outline" size={13} color={mode === "qr" ? activeTextColor : inactiveTextColor} />
           <Text style={[s.segLabel, {
             color: mode === "qr" ? activeTextColor : inactiveTextColor,
-            fontFamily: mode === "qr" ? "Inter_600SemiBold" : "Inter_400Regular",
+            fontFamily: mode === "qr" ? fontWeight.semibold : fontWeight.regular,
           }]}>
             {t("scanner.mode_qr")}
           </Text>
@@ -406,7 +408,7 @@ export default function ScannerScreen() {
           <Ionicons name="radio-outline" size={13} color={mode === "nfc" ? activeTextColor : inactiveTextColor} />
           <Text style={[s.segLabel, {
             color: mode === "nfc" ? activeTextColor : inactiveTextColor,
-            fontFamily: mode === "nfc" ? "Inter_600SemiBold" : "Inter_400Regular",
+            fontFamily: mode === "nfc" ? fontWeight.semibold : fontWeight.regular,
           }]}>
             {t("scanner.mode_nfc")}
           </Text>
@@ -435,7 +437,7 @@ export default function ScannerScreen() {
           <Ionicons name="radio-outline" size={13} color={nfcSubMode === "read" ? "#fff" : (isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)")} />
           <Text style={[s.subSegLabel, {
             color: nfcSubMode === "read" ? "#fff" : (isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)"),
-            fontFamily: nfcSubMode === "read" ? "Inter_600SemiBold" : "Inter_400Regular",
+            fontFamily: nfcSubMode === "read" ? fontWeight.semibold : fontWeight.regular,
           }]}>
             {t("scanner.nfc_submode_read")}
           </Text>
@@ -452,7 +454,7 @@ export default function ScannerScreen() {
           <Ionicons name="pencil-outline" size={13} color={nfcSubMode === "write" ? "#fff" : (isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)")} />
           <Text style={[s.subSegLabel, {
             color: nfcSubMode === "write" ? "#fff" : (isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.38)"),
-            fontFamily: nfcSubMode === "write" ? "Inter_600SemiBold" : "Inter_400Regular",
+            fontFamily: nfcSubMode === "write" ? fontWeight.semibold : fontWeight.regular,
           }]}>
             {t("scanner.nfc_submode_write")}
           </Text>
@@ -467,7 +469,7 @@ export default function ScannerScreen() {
       <View style={[s.container, { paddingTop: topPad }]}>
         <Text style={[s.header, { color: "#fff" }]}>{t("scanner.title")}</Text>
         {ModeSwitcher}
-        <View style={s.centered}><ActivityIndicator color={colors.accent} size="large" /></View>
+        <EmptyState loading title="" message="" />
       </View>
     );
   }
@@ -784,7 +786,7 @@ export default function ScannerScreen() {
               {activeSpools.length === 0 ? (
                 <View style={[s.nfcInfoBox, { backgroundColor: `${colors.textTertiary}10`, borderColor: colors.surfaceBorder, marginTop: 12 }]}>
                   <Ionicons name="layers-outline" size={32} color={colors.textTertiary} />
-                  <Text style={[s.nfcInfoTitle, { color: colors.textSecondary, fontSize: 15 }]}>
+                  <Text style={[s.nfcInfoTitle, { color: colors.textSecondary, fontSize: fontSize.lg }]}>
                     {t("scanner.nfc_write_no_spools")}
                   </Text>
                 </View>
@@ -901,8 +903,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
 
     // Header
     header: {
-      fontSize: 32,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.h1,
+      fontFamily: fontWeight.bold,
       letterSpacing: -1,
       paddingHorizontal: 20,
       paddingTop: 16,
@@ -917,13 +919,13 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       paddingHorizontal: 32,
     },
     permTitle: {
-      fontSize: 22,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.h2,
+      fontFamily: fontWeight.bold,
       textAlign: "center",
     },
     permText: {
-      fontSize: 15,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.lg,
+      fontFamily: fontWeight.regular,
       textAlign: "center",
       lineHeight: 22,
     },
@@ -936,7 +938,7 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
     permBtnText: {
       color: "#000",
       fontSize: 16,
-      fontFamily: "Inter_600SemiBold",
+      fontFamily: fontWeight.semibold,
     },
 
     // ─── Segmented control ───────────────────────────────────────────────────
@@ -978,7 +980,7 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       borderRadius: 10,
     },
     segLabel: {
-      fontSize: 13,
+      fontSize: fontSize.base,
       lineHeight: 14,            // tight: no extra vertical space above/below glyph
       includeFontPadding: false, // Android: removes top gap added by font metrics
       letterSpacing: 0.05,
@@ -993,7 +995,7 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
     },
     overlayTitle: {
       fontSize: 24,
-      fontFamily: "Inter_700Bold",
+      fontFamily: fontWeight.bold,
       color: "#fff",
       alignSelf: "flex-start",
     },
@@ -1014,8 +1016,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
     },
     viewfinderHint: {
       color: "rgba(255,255,255,0.55)",
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.regular,
     },
     resultCard: {
       backgroundColor: "rgba(0,0,0,0.75)",
@@ -1026,13 +1028,13 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       borderWidth: 1,
     },
     resultLabel: {
-      fontSize: 11,
-      fontFamily: "Inter_600SemiBold",
+      fontSize: fontSize.xs,
+      fontFamily: fontWeight.semibold,
       letterSpacing: 0.8,
     },
     resultValue: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.regular,
       color: "#fff",
     },
     actionBtn: {
@@ -1045,8 +1047,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       borderWidth: 1.5,
     },
     actionBtnText: {
-      fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
+      fontSize: fontSize.lg,
+      fontFamily: fontWeight.semibold,
     },
 
     // ─── NFC sub-mode switcher ────────────────────────────────────────────────
@@ -1083,7 +1085,7 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       borderRadius: 8,
     },
     subSegLabel: {
-      fontSize: 12,
+      fontSize: fontSize.sm,
       lineHeight: 13,
       includeFontPadding: false,
       letterSpacing: 0.05,
@@ -1096,13 +1098,13 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       gap: 8,
     },
     writeTitle: {
-      fontSize: 18,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.xl,
+      fontFamily: fontWeight.bold,
       letterSpacing: -0.3,
     },
     writeSubtitle: {
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.regular,
       lineHeight: 19,
       marginBottom: 4,
     },
@@ -1136,12 +1138,12 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       gap: 2,
     },
     spoolPickerName: {
-      fontSize: 14,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.medium,
     },
     spoolPickerSub: {
-      fontSize: 12,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.sm,
+      fontFamily: fontWeight.regular,
     },
 
     // ─── NFC mode ────────────────────────────────────────────────────────────
@@ -1165,8 +1167,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       borderWidth: 2,
     },
     nfcStatusText: {
-      fontSize: 15,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.lg,
+      fontFamily: fontWeight.medium,
       textAlign: "center",
       paddingHorizontal: 20,
       lineHeight: 22,
@@ -1182,13 +1184,13 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       gap: 14,
     },
     nfcInfoTitle: {
-      fontSize: 18,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.xl,
+      fontFamily: fontWeight.bold,
       textAlign: "center",
     },
     nfcInfoBody: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.regular,
       textAlign: "center",
       lineHeight: 21,
     },
@@ -1200,13 +1202,13 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       gap: 4,
     },
     rawLabel: {
-      fontSize: 10,
-      fontFamily: "Inter_600SemiBold",
+      fontSize: fontSize.xxs,
+      fontFamily: fontWeight.semibold,
       letterSpacing: 0.8,
     },
     rawValue: {
-      fontSize: 12,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.sm,
+      fontFamily: fontWeight.regular,
       lineHeight: 18,
     },
 
@@ -1237,12 +1239,12 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
     },
     sheetTitle: {
       fontSize: 19,
-      fontFamily: "Inter_700Bold",
+      fontFamily: fontWeight.bold,
       letterSpacing: -0.3,
     },
     sheetBody: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.regular,
       lineHeight: 20,
       marginBottom: 4,
     },
@@ -1250,8 +1252,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       ...sheetBtnBase,
     },
     sheetBtnText: {
-      fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
+      fontSize: fontSize.lg,
+      fontFamily: fontWeight.semibold,
     },
 
     // ─── Toast ────────────────────────────────────────────────────────────────
@@ -1272,8 +1274,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       elevation: 8,
     },
     toastText: {
-      fontSize: 14,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.medium,
       flex: 1,
     },
   });

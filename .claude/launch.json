@@ -5,7 +5,8 @@
       "name": "Expo Dev Server",
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "npm", "run", "start"],
-      "port": 8081
+      "port": 8081,
+      "autoPort": true
     },
     {
       "name": "Backend Server (Express/tsx)",
