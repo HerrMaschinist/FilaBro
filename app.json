@@ -49,8 +49,10 @@
       "expo-font",
       "expo-web-browser",
       "expo-camera",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-asset"
     ],
+    "assetBundlePatterns": ["assets/**/*"],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

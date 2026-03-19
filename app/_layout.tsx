@@ -17,6 +17,7 @@ import {
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
 import { initDatabase } from "@/src/data/db/client";
+import { initCatalogDatabase } from "@/src/data/db/catalog_client";
 import { useAppTheme } from "@/contexts/AppContext";
 
 // Run SQLite migrations synchronously before any component mounts.
@@ -104,6 +105,13 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  useEffect(() => {
+    // Copy bundled OFD catalog DB to document directory on first launch.
+    initCatalogDatabase().catch((e) =>
+      console.warn("[CatalogDB] init failed:", e)
+    );
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded) {
