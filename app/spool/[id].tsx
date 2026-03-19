@@ -153,67 +153,33 @@ export default function SpoolDetailScreen() {
         ]}
       />
 
-      <View style={s.headerRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.title, { color: colors.text }]}>
-            {getFilamentLabel(spool)}
+      <View style={s.headerBlock}>
+        <Text style={[s.title, { color: colors.text }]}>
+          {getFilamentLabel(spool)}
+        </Text>
+        {spool.lot_nr && (
+          <Text style={[s.sub, { color: colors.textSecondary }]}>
+            {t("detail.lot")} {spool.lot_nr}
           </Text>
-          {spool.lot_nr && (
-            <Text style={[s.sub, { color: colors.textSecondary }]}>
-              {t("detail.lot")} {spool.lot_nr}
-            </Text>
-          )}
-        </View>
+        )}
         <View style={s.headerActions}>
-          <Pressable
-            style={s.actionBtn}
-            onPress={() => toggleFavorite(spool.id)}
-            hitSlop={12}
-          >
-            <Ionicons
-              name={favorite ? "heart" : "heart-outline"}
-              size={24}
-              color={favorite ? colors.error : colors.textTertiary}
-            />
+          <Pressable style={s.actionBtn} onPress={() => toggleFavorite(spool.id)} hitSlop={12}>
+            <Ionicons name={favorite ? "heart" : "heart-outline"} size={24} color={favorite ? colors.error : colors.textTertiary} />
           </Pressable>
-
           {spool._localId && (
-            <Pressable
-              style={s.actionBtn}
-              onPress={() => router.push(`/edit-spool?localId=${spool._localId}`)}
-              hitSlop={12}
-              testID="bind-qr-barcode"
-            >
+            <Pressable style={s.actionBtn} onPress={() => router.push(`/edit-spool?localId=${spool._localId}`)} hitSlop={12} testID="bind-qr-barcode">
               <Ionicons name="qr-code-outline" size={22} color={colors.textSecondary} />
             </Pressable>
           )}
-
           {spool._localId && Platform.OS !== "web" && (
-            <Pressable
-              style={s.actionBtn}
-              onPress={() => router.push(`/nfc-write?localId=${spool._localId}`)}
-              hitSlop={12}
-              testID="write-nfc-tag"
-            >
+            <Pressable style={s.actionBtn} onPress={() => router.push(`/nfc-write?localId=${spool._localId}`)} hitSlop={12} testID="write-nfc-tag">
               <Ionicons name="radio-outline" size={22} color={colors.textSecondary} />
             </Pressable>
           )}
-
-          <Pressable
-            style={s.actionBtn}
-            onPress={() => spool._localId && router.push(`/edit-spool?localId=${spool._localId}`)}
-            hitSlop={12}
-            testID="edit-spool"
-          >
+          <Pressable style={s.actionBtn} onPress={() => spool._localId && router.push(`/edit-spool?localId=${spool._localId}`)} hitSlop={12} testID="edit-spool">
             <Ionicons name="create-outline" size={22} color={colors.textSecondary} />
           </Pressable>
-
-          <Pressable
-            style={s.actionBtn}
-            onPress={handleDelete}
-            hitSlop={12}
-            testID="delete-spool"
-          >
+          <Pressable style={s.actionBtn} onPress={handleDelete} hitSlop={12} testID="delete-spool">
             <Ionicons name="trash-outline" size={22} color={colors.error} />
           </Pressable>
         </View>
@@ -460,16 +426,15 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       borderRadius: 3,
       marginBottom: 16,
     },
-    headerRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
+    headerBlock: {
+      flexDirection: "column",
       marginBottom: 16,
+      gap: 8,
     },
     title: {
       fontSize: 22,
       fontFamily: "Inter_700Bold",
       letterSpacing: -0.5,
-      flexShrink: 1,
     },
     sub: {
       fontSize: 13,
@@ -480,7 +445,6 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      marginLeft: 12,
     },
     actionBtn: {
       width: 40,
