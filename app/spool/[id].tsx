@@ -172,7 +172,7 @@ export default function SpoolDetailScreen() {
             <Ionicons name={favorite ? "heart" : "heart-outline"} size={24} color={favorite ? colors.error : colors.textTertiary} />
           </Pressable>
           {spool._localId && (
-            <Pressable style={s.actionBtn} onPress={() => router.push(`/edit-spool?localId=${spool._localId}`)} hitSlop={12} testID="bind-qr-barcode">
+            <Pressable style={s.actionBtn} onPress={() => router.push("/(tabs)/scanner")} hitSlop={12} testID="bind-qr-barcode">
               <Ionicons name="qr-code-outline" size={22} color={colors.textSecondary} />
             </Pressable>
           )}
