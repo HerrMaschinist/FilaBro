@@ -18,6 +18,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -36,7 +37,7 @@ const MATERIALS = ["PLA", "PETG", "ABS", "TPU", "ASA", "PA", "PC"];
 
 export default function SpoolsScreen() {
   const { t } = useTranslation();
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const {
     spools,
@@ -175,8 +176,11 @@ export default function SpoolsScreen() {
 
   const s = makeStyles(colors);
 
+  const gradStart = isDark ? "#0B0F1A" : "#F0F4FA";
+  const gradEnd   = isDark ? "#0F1425" : "#E8EFF9";
+
   return (
-    <View style={[s.container, { paddingTop: topInset }]}>
+    <LinearGradient colors={[gradStart, gradEnd]} style={[s.container, { paddingTop: topInset }]}>
       <View style={s.headerRow}>
         <Text style={s.title}>{t("home.title")}</Text>
         <View style={s.headerActions}>
@@ -409,7 +413,7 @@ export default function SpoolsScreen() {
         sortDir={sortDir}
         setSortDir={setSortDir}
       />
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -866,7 +870,7 @@ function FilterModal({
 
 function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
+    container: { flex: 1 },
     headerRow: {
       flexDirection: "row",
       alignItems: "center",

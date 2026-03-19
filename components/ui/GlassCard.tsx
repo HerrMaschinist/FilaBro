@@ -13,7 +13,7 @@ interface GlassCardProps {
 export function GlassCard({
   children,
   style,
-  intensity = 40,
+  intensity = 55,
   borderRadius = 20,
 }: GlassCardProps) {
   const { colors, isDark } = useAppTheme();
@@ -56,8 +56,8 @@ export function GlassCard({
           StyleSheet.absoluteFill,
           {
             backgroundColor: isDark
-              ? "rgba(17,24,39,0.55)"
-              : "rgba(255,255,255,0.45)",
+              ? "rgba(17,24,39,0.50)"
+              : "rgba(255,255,255,0.55)",
           },
         ]}
       />

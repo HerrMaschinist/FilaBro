@@ -43,6 +43,29 @@ export const fontWeight = {
   bold: "Inter_700Bold",
 } as const;
 
+export const letterSpacing = {
+  tight:  -0.5,
+  normal:  0,
+  wide:    0.5,
+  wider:   0.8,
+} as const;
+
+export const typography = {
+  title: {
+    fontSize: fontSize.h1,
+    fontFamily: fontWeight.bold,
+    letterSpacing: -1,
+  },
+  bodyLg: {
+    fontSize: fontSize.lg,
+    fontFamily: fontWeight.semibold,
+  },
+  caption: {
+    fontSize: fontSize.xs,
+    fontFamily: fontWeight.regular,
+  },
+} as const;
+
 export const shadow = {
   sheet: {
     shadowColor: "#000",

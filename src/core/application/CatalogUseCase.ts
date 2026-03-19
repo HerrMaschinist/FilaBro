@@ -37,6 +37,8 @@ export interface CreateSpoolInput {
   comment?: string;
   displayName?: string;
   lotNr?: string;
+  qrCode?: string;
+  nfcTagId?: string;
 }
 
 export const CatalogUseCase = {

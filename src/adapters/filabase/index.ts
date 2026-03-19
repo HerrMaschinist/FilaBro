@@ -1,21 +1,21 @@
 /**
- * src/adapters/spoolman/index.ts
+ * src/adapters/filabase/index.ts
  *
  * Concrete implementation of IExternalFilamentSystemPort backed by the
- * Spoolman REST API.
+ * FilaBase REST API (former Spoolman integration — legacy endpoint shape).
  *
- * This is the ONLY place in the codebase allowed to import SpoolmanClient
- * or reference Spoolman-specific snake_case field names.
+ * This is the ONLY place in the codebase allowed to import FilaBaseClient
+ * or reference legacy snake_case field names from the remote API.
  *
  * Responsibilities:
- *   - Call SpoolmanClient (raw HTTP)
- *   - Translate Spoolman API shapes → backend-neutral port DTOs (camelCase)
- *   - Translate neutral patch DTOs → Spoolman API payloads (snake_case)
+ *   - Call FilaBaseClient (raw HTTP)
+ *   - Translate Legacy API shapes → backend-neutral port DTOs (camelCase)
+ *   - Translate neutral patch DTOs → Legacy API payloads (snake_case)
  *
  * SyncUseCase depends on IExternalFilamentSystemPort, not on this file.
  * Swap this adapter for any other backend without touching the use case.
  */
-import * as SpoolmanClient from "@/src/data/api/SpoolmanClient";
+import * as FilaBaseClient from "@/src/data/api/FilaBaseClient";
 import type {
   IExternalFilamentSystemPort,
   RemoteManufacturerDTO,
@@ -24,13 +24,13 @@ import type {
   SpoolPatchDTO,
 } from "@/src/core/ports/index";
 
-export const SpoolmanAdapter: IExternalFilamentSystemPort = {
+export const FilaBaseAdapter: IExternalFilamentSystemPort = {
   async healthCheck(baseUrl: string): Promise<{ status: string }> {
-    return SpoolmanClient.healthCheck(baseUrl);
+    return FilaBaseClient.healthCheck(baseUrl);
   },
 
   async getManufacturers(baseUrl: string): Promise<RemoteManufacturerDTO[]> {
-    const vendors = await SpoolmanClient.getVendors(baseUrl);
+    const vendors = await FilaBaseClient.getVendors(baseUrl);
     return vendors.map((v) => ({
       id: v.id,
       name: v.name,
@@ -39,7 +39,7 @@ export const SpoolmanAdapter: IExternalFilamentSystemPort = {
   },
 
   async getFilaments(baseUrl: string): Promise<RemoteFilamentDTO[]> {
-    const filaments = await SpoolmanClient.getFilaments(baseUrl);
+    const filaments = await FilaBaseClient.getFilaments(baseUrl);
     return filaments.map((f) => ({
       id: f.id,
       name: f.name,
@@ -55,7 +55,7 @@ export const SpoolmanAdapter: IExternalFilamentSystemPort = {
   },
 
   async getSpools(baseUrl: string): Promise<RemoteSpoolDTO[]> {
-    const spools = await SpoolmanClient.getSpools(baseUrl);
+    const spools = await FilaBaseClient.getSpools(baseUrl);
     return spools.map((s) => ({
       id: s.id,
       filament: {
@@ -92,7 +92,7 @@ export const SpoolmanAdapter: IExternalFilamentSystemPort = {
     remoteId: number,
     patch: SpoolPatchDTO
   ): Promise<void> {
-    await SpoolmanClient.patchSpool(baseUrl, remoteId, {
+    await FilaBaseClient.patchSpool(baseUrl, remoteId, {
       remaining_weight: patch.remainingWeight,
     });
   },

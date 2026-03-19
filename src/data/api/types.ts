@@ -1,5 +1,5 @@
 /**
- * Spoolman REST API response types.
+ * Remote REST API response types (Legacy Spoolman integration).
  * These represent what the server actually sends.
  * They are NOT domain models.
  */

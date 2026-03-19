@@ -155,7 +155,7 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
   {
     version: 6,
     statements: [
-      // Phase 5.1A: purchase metadata fields on filaments (local-only, not synced to Spoolman)
+      // Phase 5.1A: purchase metadata fields on filaments (local-only, not synced to Remote)
       `ALTER TABLE filaments ADD COLUMN paid_price REAL`,
       `ALTER TABLE filaments ADD COLUMN shop TEXT`,
     ],
@@ -181,7 +181,7 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
       `ALTER TABLE filaments ADD COLUMN bed_temp_c_max INTEGER`,
       // Seed: copy legacy color_name -> color_name_raw (preserves prior user data)
       `UPDATE filaments SET color_name_raw = color_name WHERE color_name IS NOT NULL AND color_name_raw IS NULL`,
-      // Seed: copy Spoolman color_hex -> color_hex_norm, normalizing to #RRGGBB format
+      // Seed (Legacy integration): copy former Spoolman color_hex -> color_hex_norm, normalizing to #RRGGBB format
       `UPDATE filaments SET color_hex_norm = CASE WHEN SUBSTR(color_hex,1,1)='#' THEN color_hex ELSE '#' || color_hex END WHERE color_hex IS NOT NULL AND color_hex_norm IS NULL`,
     ],
   },

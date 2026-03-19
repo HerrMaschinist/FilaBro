@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,14 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppTheme } from "@/contexts/AppContext";
 import { spacing, radius, fontSize, fontWeight } from "@/constants/ui";
@@ -31,13 +39,31 @@ export function EmptyState({
 }: EmptyStateProps) {
   const { colors } = useAppTheme();
 
+  const breathe = useSharedValue(1);
+  useEffect(() => {
+    breathe.value = withRepeat(
+      withSequence(
+        withTiming(1.08, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.00, { duration: 1800, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      false
+    );
+  }, []);
+
+  const breatheStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: breathe.value }],
+  }));
+
   return (
     <View style={styles.container}>
       {loading ? (
         <ActivityIndicator color={colors.accent} size="large" />
       ) : (
         icon !== undefined && (
-          <Ionicons name={icon} size={48} color={colors.textTertiary} />
+          <Animated.View style={breatheStyle}>
+            <Ionicons name={icon} size={48} color={colors.textTertiary} />
+          </Animated.View>
         )
       )}
 

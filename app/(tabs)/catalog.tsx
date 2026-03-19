@@ -10,10 +10,12 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
+import { fontSize, fontWeight } from "@/constants/ui";
 import type { Manufacturer, Filament as DomainFilament } from "@/src/domain/models";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -179,7 +181,7 @@ function SectionHeader({
 
 export default function CatalogScreen() {
   const { t } = useTranslation();
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const {
     manufacturers,
@@ -361,8 +363,11 @@ export default function CatalogScreen() {
     return null;
   };
 
+  const gradStart = isDark ? "#0B0F1A" : "#F0F4FA";
+  const gradEnd   = isDark ? "#0F1425" : "#E8EFF9";
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <LinearGradient colors={[gradStart, gradEnd]} style={styles.container}>
       <FlatList
         data={listData}
         keyExtractor={(item, index) => {
@@ -385,15 +390,15 @@ export default function CatalogScreen() {
         showsVerticalScrollIndicator={false}
         testID="catalog-list"
       />
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   screenTitle: {
-    fontSize: 32,
-    fontFamily: "Inter_700Bold",
+    fontSize: fontSize.h1,
+    fontFamily: fontWeight.bold,
     letterSpacing: -1,
     marginBottom: 20,
     paddingTop: 8,
@@ -407,13 +412,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   sectionTitle: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
+    fontSize: fontSize.xs,
+    fontFamily: fontWeight.semibold,
     letterSpacing: 0.8,
   },
   sectionCount: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
+    fontSize: fontSize.xs,
+    fontFamily: fontWeight.regular,
   },
   addBtn: {
     width: 30,
@@ -457,12 +462,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   rowTitle: {
-    fontSize: 15,
-    fontFamily: "Inter_500Medium",
+    fontSize: fontSize.lg,
+    fontFamily: fontWeight.medium,
   },
   rowSub: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
+    fontSize: fontSize.sm,
+    fontFamily: fontWeight.regular,
   },
   rowActions: {
     flexDirection: "row",
@@ -479,8 +484,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emptyText: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
+    fontSize: fontSize.md,
+    fontFamily: fontWeight.regular,
     textAlign: "center",
   },
 });

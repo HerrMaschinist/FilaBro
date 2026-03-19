@@ -5,12 +5,12 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  ActivityIndicator,
   StyleSheet,
   Platform,
   Alert,
 } from "react-native";
 import { useLocalSearchParams, Stack, router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import Colors from "@/constants/colors";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import type { Spool } from "@/lib/spoolViewTypes";
 
 function percentColor(pct: number, colors: typeof Colors.dark) {
@@ -30,15 +31,6 @@ function getColorHex(spool: Spool): string | undefined {
   return spool.filament?.color_hex;
 }
 
-function getFilamentLabel(spool: Spool): string {
-  const f = spool.filament;
-  if (!f) return `Spool #${spool.id}`;
-  const parts: string[] = [];
-  if (f.vendor?.name) parts.push(f.vendor.name);
-  if (f.name) parts.push(f.name);
-  if (f.material) parts.push(f.material);
-  return parts.join(" · ") || `Spool #${spool.id}`;
-}
 
 export default function SpoolDetailScreen() {
   const { t } = useTranslation();
@@ -117,20 +109,23 @@ export default function SpoolDetailScreen() {
   const s = makeStyles(colors, isDark);
   const bottomInset = insets.bottom + (Platform.OS === "web" ? 34 : 0);
 
+  const gradStart = isDark ? "#0B0F1A" : "#F0F4FA";
+  const gradEnd   = isDark ? "#0F1425" : "#E8EFF9";
+
   if (!spool) {
     return (
-      <View style={[s.center, { backgroundColor: colors.background }]}>
+      <LinearGradient colors={[gradStart, gradEnd]} style={s.center}>
         <Stack.Screen options={{ title: t("detail.not_found") }} />
         <Text style={[s.notFound, { color: colors.textSecondary }]}>
           {t("detail.not_found")}
         </Text>
-      </View>
+      </LinearGradient>
     );
   }
 
   return (
+    <LinearGradient colors={[gradStart, gradEnd]} style={{ flex: 1 }}>
     <ScrollView
-      style={{ backgroundColor: colors.background }}
       contentContainerStyle={[s.content, { paddingBottom: bottomInset + 40 }]}
       showsVerticalScrollIndicator={false}
     >
@@ -149,53 +144,47 @@ export default function SpoolDetailScreen() {
         ]}
       />
 
-      <View style={s.headerRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.title, { color: colors.text }]}>
-            {getFilamentLabel(spool)}
-          </Text>
-          {spool.lot_nr && (
-            <Text style={[s.sub, { color: colors.textSecondary }]}>
-              {t("detail.lot")} {spool.lot_nr}
+      <View style={s.headerBlock}>
+        <View style={s.titleBlock}>
+          {spool.filament?.vendor?.name && (
+            <Text style={[s.titleVendor, { color: colors.textSecondary }]}>
+              {spool.filament.vendor.name}
             </Text>
           )}
+          <Text style={[s.titleName, { color: colors.text }]} numberOfLines={2}>
+            {spool.filament?.name ?? `Spool #${spool.id}`}
+          </Text>
+          {spool.filament?.material && (
+            <View style={[s.materialBadge, { backgroundColor: `${colors.accent}1A` }]}>
+              <Text style={[s.materialBadgeText, { color: colors.accent }]}>
+                {spool.filament.material}
+              </Text>
+            </View>
+          )}
         </View>
+        {spool.lot_nr && (
+          <Text style={[s.sub, { color: colors.textSecondary }]}>
+            {t("detail.lot")} {spool.lot_nr}
+          </Text>
+        )}
         <View style={s.headerActions}>
-          <Pressable
-            style={s.actionBtn}
-            onPress={() => toggleFavorite(spool.id)}
-            hitSlop={12}
-          >
-            <Ionicons
-              name={favorite ? "heart" : "heart-outline"}
-              size={24}
-              color={favorite ? colors.error : colors.textTertiary}
-            />
+          <Pressable style={s.actionBtn} onPress={() => toggleFavorite(spool.id)} hitSlop={12}>
+            <Ionicons name={favorite ? "heart" : "heart-outline"} size={24} color={favorite ? colors.error : colors.textTertiary} />
           </Pressable>
+          {spool._localId && (
+            <Pressable style={s.actionBtn} onPress={() => router.push("/(tabs)/scanner")} hitSlop={12} testID="bind-qr-barcode">
+              <Ionicons name="qr-code-outline" size={22} color={colors.textSecondary} />
+            </Pressable>
+          )}
           {spool._localId && Platform.OS !== "web" && (
-            <Pressable
-              style={s.actionBtn}
-              onPress={() => router.push(`/nfc-write?localId=${spool._localId}`)}
-              hitSlop={12}
-              testID="write-nfc-tag"
-            >
+            <Pressable style={s.actionBtn} onPress={() => router.push(`/nfc-write?localId=${spool._localId}`)} hitSlop={12} testID="write-nfc-tag">
               <Ionicons name="radio-outline" size={22} color={colors.textSecondary} />
             </Pressable>
           )}
-          <Pressable
-            style={s.actionBtn}
-            onPress={() => spool._localId && router.push(`/edit-spool?localId=${spool._localId}`)}
-            hitSlop={12}
-            testID="edit-spool"
-          >
+          <Pressable style={s.actionBtn} onPress={() => spool._localId && router.push(`/edit-spool?localId=${spool._localId}`)} hitSlop={12} testID="edit-spool">
             <Ionicons name="create-outline" size={22} color={colors.textSecondary} />
           </Pressable>
-          <Pressable
-            style={s.actionBtn}
-            onPress={handleDelete}
-            hitSlop={12}
-            testID="delete-spool"
-          >
+          <Pressable style={s.actionBtn} onPress={handleDelete} hitSlop={12} testID="delete-spool">
             <Ionicons name="trash-outline" size={22} color={colors.error} />
           </Pressable>
         </View>
@@ -218,12 +207,22 @@ export default function SpoolDetailScreen() {
             />
           </View>
           <View style={s.weightRow}>
-            <Text style={[s.weightNum, { color: colors.text }]}>
-              {Math.round(remaining)}g
-            </Text>
-            <Text style={[s.weightTotal, { color: colors.textSecondary }]}>
-              / {Math.round(total)}g
-            </Text>
+            <View style={s.weightMain}>
+              <Text style={[s.weightNum, { color: barColor }]}>
+                {Math.round(remaining)}
+              </Text>
+              <Text style={[s.weightUnit, { color: colors.textSecondary }]}>g</Text>
+            </View>
+            <View style={s.weightMeta}>
+              <Text style={[s.weightTotal, { color: colors.textTertiary }]}>
+                von {Math.round(total)}g
+              </Text>
+              <Text style={[s.weightTare, { color: colors.textTertiary }]}>
+                {spool.filament?.weight != null
+                  ? `Leer: ${Math.round((spool.filament.weight ?? 0) - (spool.initial_weight ?? 0))}g`
+                  : ""}
+              </Text>
+            </View>
           </View>
         </View>
       </GlassCard>
@@ -252,21 +251,14 @@ export default function SpoolDetailScreen() {
               onSubmitEditing={saveWeight}
             />
             <Text style={[s.unit, { color: colors.textSecondary }]}>g</Text>
-            <Pressable
-              style={[
-                s.saveBtn,
-                { backgroundColor: colors.accent },
-                isSaving && { opacity: 0.5 },
-              ]}
+            <PrimaryButton
+              label={t("common.save")}
               onPress={saveWeight}
+              loading={isSaving}
               disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={s.saveBtnLabel}>{t("common.save")}</Text>
-              )}
-            </Pressable>
+              testID="save-weight"
+              style={s.saveBtn}
+            />
           </View>
           {saveError && (
             <Text style={[s.errorText, { color: colors.error }]}>{saveError}</Text>
@@ -351,6 +343,7 @@ export default function SpoolDetailScreen() {
         </View>
       </GlassCard>
     </ScrollView>
+    </LinearGradient>
   );
 }
 
@@ -448,16 +441,36 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       borderRadius: 3,
       marginBottom: 16,
     },
-    headerRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
+    headerBlock: {
+      flexDirection: "column",
       marginBottom: 16,
+      gap: 8,
     },
-    title: {
-      fontSize: 22,
+    titleBlock: {
+      gap: 4,
+      marginBottom: 2,
+    },
+    titleVendor: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
+      letterSpacing: 0.2,
+    },
+    titleName: {
+      fontSize: 24,
       fontFamily: "Inter_700Bold",
       letterSpacing: -0.5,
-      flexShrink: 1,
+      lineHeight: 28,
+    },
+    materialBadge: {
+      alignSelf: "flex-start",
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+    },
+    materialBadgeText: {
+      fontSize: 12,
+      fontFamily: "Inter_600SemiBold",
+      letterSpacing: 0.3,
     },
     sub: {
       fontSize: 13,
@@ -468,7 +481,6 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      marginLeft: 12,
     },
     actionBtn: {
       width: 40,
@@ -521,16 +533,35 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
     },
     weightRow: {
       flexDirection: "row",
+      alignItems: "flex-end",
+      justifyContent: "space-between",
+      marginTop: 10,
+    },
+    weightMain: {
+      flexDirection: "row",
       alignItems: "baseline",
-      marginTop: 8,
-      gap: 4,
+      gap: 2,
     },
     weightNum: {
-      fontSize: 28,
+      fontSize: 36,
       fontFamily: "Inter_700Bold",
+      letterSpacing: -1,
+    },
+    weightUnit: {
+      fontSize: 18,
+      fontFamily: "Inter_400Regular",
+      marginBottom: 2,
+    },
+    weightMeta: {
+      alignItems: "flex-end",
+      gap: 2,
     },
     weightTotal: {
-      fontSize: 15,
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+    },
+    weightTare: {
+      fontSize: 11,
       fontFamily: "Inter_400Regular",
     },
     inputRow: {

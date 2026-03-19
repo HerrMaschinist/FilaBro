@@ -1,7 +1,7 @@
 const de = {
   onboarding: {
     title: "FilaBro",
-    subtitle: "Verwalte deine Filamentsammlung über Spoolman.",
+    subtitle: "Verwalte deine Filamentsammlung mit FilaBro.",
     server_url_label: "SERVER-URL",
     http_hint: "HTTP wird für lokale Netzwerke und VPN-IPs unterstützt.",
     test_connection: "Verbindung testen",
@@ -9,7 +9,8 @@ const de = {
     skip: "Überspringen. Offline nutzen.",
     skip_hint: "Du kannst den Server später in den Einstellungen verbinden.",
     connected: "Verbunden",
-    spoolman_version: "Spoolman v{{version}}",
+    filabase_version: "FilaBase v{{version}}",
+    server_version: "Server v{{version}}",
     error_type: {
       timeout: "Zeitüberschreitung. Server hat zu lange gebraucht.",
       network: "Netzwerk nicht erreichbar. WLAN oder VPN prüfen.",
@@ -33,7 +34,8 @@ const de = {
     no_spools_title: "Keine Spulen gefunden",
     no_spools_sub: "Zum Synchronisieren nach unten ziehen",
     no_server_title: "Kein Server verbunden",
-    no_server_sub: "Konfiguriere einen Spoolman-Server in den Einstellungen.",
+    no_server_sub: "Konfiguriere einen FilaBase-Server in den Einstellungen.",
+    offline_mode_hint: "Offline-Modus – kein Server verbunden.",
     go_to_settings: "Zu den Einstellungen",
     error_title: "Server nicht erreichbar",
     retry: "Erneut versuchen",
@@ -105,6 +107,21 @@ const de = {
     nfc_write_subtitle: "Wähle eine Spule, um sie auf einen NFC-Tag zu schreiben.",
     nfc_write_no_spools: "Keine aktiven Spulen vorhanden. Zuerst eine Spule anlegen.",
     nfc_write_go: "NFC-Tag schreiben",
+    code_conflict_title: "Code bereits vergeben",
+    code_conflict_single: "Dieser Code wird bereits von folgender Spule verwendet:",
+    create_anyway: "Trotzdem neue Spule anlegen",
+    later_cleanup: "Später bereinigen",
+    scan_history_title: "Scanner-Historie",
+    scan_history_empty: "Noch keine Scans",
+    scan_source_qr: "QR",
+    scan_source_barcode: "Barcode",
+    scan_source_nfc_local: "NFC (FilaBro)",
+    scan_source_nfc_legacy: "NFC (Legacy)",
+    scan_source_nfc_remote: "NFC (Text)",
+    scan_res_none: "Kein Treffer",
+    scan_res_single: "1 Treffer",
+    scan_res_multiple: "Mehrere Treffer",
+    scan_res_direct_open: "Direkt geöffnet",
   },
   settings: {
     title: "Einstellungen",
@@ -237,7 +254,7 @@ const de = {
     website: "Webseite",
     comment: "Kommentar",
     display_name: "Anzeigename",
-    qr_code: "QR-Code",
+    qr_code: "QR / Barcode",
     nfc_tag_id: "NFC-Tag-ID",
     print_temp_min: "Min. Drucktemperatur (°C)",
     print_temp_max: "Max. Drucktemperatur (°C)",
@@ -302,3 +319,4 @@ const de = {
 } as const;
 
 export default de;
+

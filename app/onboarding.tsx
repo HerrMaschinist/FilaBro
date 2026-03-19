@@ -16,8 +16,8 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
-import { SpoolmanAdapter } from "@/src/adapters/spoolman";
-import type { SpoolmanNetworkError } from "@/src/data/api/SpoolmanClient";
+import { FilaBaseAdapter } from "@/src/adapters/filabase";
+import type { FilaBaseNetworkError } from "@/src/data/api/FilaBaseClient";
 
 const DEFAULT_URL = "http://192.168.XX.XX:7912";
 
@@ -54,7 +54,7 @@ export default function OnboardingScreen() {
     setServerVersion("");
 
     try {
-      const health = (await SpoolmanAdapter.healthCheck(trimmed)) as {
+      const health = (await FilaBaseAdapter.healthCheck(trimmed)) as {
         status: string;
         version?: string;
       };
@@ -65,7 +65,7 @@ export default function OnboardingScreen() {
       setStatus("error");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
-      const netErr = err as Partial<SpoolmanNetworkError>;
+      const netErr = err as Partial<FilaBaseNetworkError>;
       if (netErr.errorType) {
         setDiag({
           endpoint: netErr.endpoint ?? trimmed,
@@ -157,7 +157,7 @@ export default function OnboardingScreen() {
             <Ionicons name="checkmark-circle" size={20} color={colors.success} />
             <Text style={[s.bannerText, { color: colors.success }]}>
               {t("onboarding.connected")}
-              {serverVersion ? ` · ${t("onboarding.spoolman_version", { version: serverVersion })}` : ""}
+              {serverVersion ? ` · ${t("onboarding.server_version", { version: serverVersion })}` : ""}
             </Text>
           </View>
         )}

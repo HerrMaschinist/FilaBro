@@ -124,7 +124,7 @@ export const FilamentUseCase = {
    * The colorInput field is stripped before reaching the repository.
    *
    * Spec validation is performed before writing. Returns null if spec is invalid.
-   * paidPrice, shop, and spec are local-only and never sent to Spoolman.
+   * paidPrice, shop, and spec are local-only and never sent to Remote.
    */
   async updateFilament(
     localId: string,

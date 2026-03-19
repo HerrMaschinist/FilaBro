@@ -39,3 +39,18 @@ yarn-error.*
 .vercel
 
 .env
+
+# Local tool cache
+.config/
+.local/
+
+# Claude Code internals
+.claude/
+
+# Dev scripts
+start-expo.bat
+check-filabro.ps1
+
+# Backup directories and files
+_backup/
+*.backup_*

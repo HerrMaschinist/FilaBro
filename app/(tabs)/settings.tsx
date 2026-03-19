@@ -11,17 +11,32 @@ import {
   Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import Constants from "expo-constants";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
-import { healthCheck } from "@/src/data/api/SpoolmanClient";
+import { fontSize, fontWeight } from "@/constants/ui";
 import {
   checkNfcAvailability,
   type NfcAvailability,
 } from "@/src/features/nfc";
 
 type TestState = "idle" | "testing" | "ok" | "error";
+
+// ─── Inline health check — no SpoolmanClient dependency ──────────────────────
+async function healthCheck(baseUrl: string): Promise<{ version?: string }> {
+  const url = baseUrl.trim().replace(/\/+$/, "");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${url}/api/v1/health`, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as { version?: string };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function formatTimestamp(ts: number | null, never: string): string {
   if (!ts) return never;
@@ -35,7 +50,7 @@ function formatTimestamp(ts: number | null, never: string): string {
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
 
   const {
@@ -154,16 +169,20 @@ export default function SettingsScreen() {
 
   const s = makeStyles(colors);
 
+  const gradStart = isDark ? "#0B0F1A" : "#F0F4FA";
+  const gradEnd   = isDark ? "#0F1425" : "#E8EFF9";
+
   return (
+    <LinearGradient colors={[gradStart, gradEnd]} style={s.container}>
     <ScrollView
-      style={[s.container, { backgroundColor: colors.background }]}
+      style={s.scrollView}
       contentContainerStyle={[s.content, { paddingTop: topInset }]}
       showsVerticalScrollIndicator={false}
     >
       <Text style={[s.pageTitle, { color: colors.text }]}>{t("settings.title")}</Text>
 
       {/* ── Connection ── */}
-      <Text style={[s.sectionHeader, { color: colors.textSecondary }]}>
+      <Text style={s.sectionHeader}>
         {t("settings.connection")}
       </Text>
       <View style={[s.card, { backgroundColor: colors.surface }]}>
@@ -174,7 +193,7 @@ export default function SettingsScreen() {
 
         <Text style={[s.label, { color: colors.textSecondary }]}>{t("settings.server_url")}</Text>
         <TextInput
-          style={[s.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.surfaceBorder }]}
+          style={[s.input, { backgroundColor: colors.surfaceElevated, color: colors.text, borderColor: colors.surfaceBorder }]}
           value={urlInput}
           onChangeText={(v) => { setUrlInput(v); setTestState("idle"); setTestMessage(""); }}
           placeholder="http://192.168.1.x:7912"
@@ -220,7 +239,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* ── Sync ── */}
-      <Text style={[s.sectionHeader, { color: colors.textSecondary }]}>{t("settings.sync")}</Text>
+      <Text style={s.sectionHeader}>{t("settings.sync")}</Text>
       <View style={[s.card, { backgroundColor: colors.surface }]}>
         <View style={s.row}>
           <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
@@ -254,7 +273,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* ── Language ── */}
-      <Text style={[s.sectionHeader, { color: colors.textSecondary }]}>{t("settings.language")}</Text>
+      <Text style={s.sectionHeader}>{t("settings.language")}</Text>
       <View style={[s.card, { backgroundColor: colors.surface }]}>
         <View style={s.segmented}>
           {LANG_OPTIONS.map((opt) => (
@@ -276,7 +295,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* ── Appearance ── */}
-      <Text style={[s.sectionHeader, { color: colors.textSecondary }]}>{t("settings.appearance")}</Text>
+      <Text style={s.sectionHeader}>{t("settings.appearance")}</Text>
       <View style={[s.card, { backgroundColor: colors.surface }]}>
         <Text style={[s.label, { color: colors.textSecondary }]}>{t("settings.theme")}</Text>
         <View style={s.segmented}>
@@ -299,7 +318,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* ── Weight Input ── */}
-      <Text style={[s.sectionHeader, { color: colors.textSecondary }]}>{t("settings.weight_input")}</Text>
+      <Text style={s.sectionHeader}>{t("settings.weight_input")}</Text>
       <View style={[s.card, { backgroundColor: colors.surface }]}>
         <Text style={[s.label, { color: colors.textSecondary }]}>{t("settings.weight_mode")}</Text>
         <View style={s.segmented}>
@@ -322,7 +341,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* ── Debug ── */}
-      <Text style={[s.sectionHeader, { color: colors.textSecondary }]}>{t("settings.debug")}</Text>
+      <Text style={s.sectionHeader}>{t("settings.debug")}</Text>
       <View style={[s.card, { backgroundColor: colors.surface }]}>
         {/* Persistence */}
         <View style={s.debugRow}>
@@ -393,29 +412,35 @@ export default function SettingsScreen() {
 
       <View style={{ height: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 100 }} />
     </ScrollView>
+    </LinearGradient>
   );
 }
 
 function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
   return StyleSheet.create({
     container: { flex: 1 },
+    scrollView: { flex: 1 },
     content: { paddingHorizontal: 20, paddingBottom: 40 },
     pageTitle: {
-      fontSize: 32,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.h1,
+      fontFamily: fontWeight.bold,
       letterSpacing: -1,
       marginBottom: 28,
       paddingTop: 16,
     },
     sectionHeader: {
-      fontSize: 11,
-      fontFamily: "Inter_600SemiBold",
-      letterSpacing: 1,
+      fontSize: fontSize.xs,
+      fontFamily: fontWeight.semibold,
+      letterSpacing: 0.8,
+      textTransform: "uppercase",
+      color: colors.textTertiary,
       marginBottom: 8,
       marginTop: 24,
     },
     card: {
       borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.surfaceBorder,
       padding: 16,
       gap: 10,
     },
@@ -431,24 +456,24 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       borderRadius: 4,
     },
     statusLabel: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.medium,
     },
     label: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.medium,
     },
     input: {
       borderWidth: 1,
       borderRadius: 10,
       paddingHorizontal: 14,
       paddingVertical: 10,
-      fontSize: 15,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.lg,
+      fontFamily: fontWeight.regular,
     },
     testMsg: {
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.regular,
     },
     btnRow: {
       flexDirection: "row",
@@ -465,8 +490,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
     btnFill: {},
     btnDisabled: { opacity: 0.5 },
     btnLabel: {
-      fontSize: 14,
-      fontFamily: "Inter_600SemiBold",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.semibold,
     },
     disconnectBtn: {
       flexDirection: "row",
@@ -476,8 +501,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       paddingVertical: 8,
     },
     disconnectLabel: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.medium,
     },
     row: {
       flexDirection: "row",
@@ -485,8 +510,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       gap: 6,
     },
     metaText: {
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.regular,
     },
     segmented: {
       flexDirection: "row",
@@ -500,8 +525,8 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       alignItems: "center",
     },
     segmentLabel: {
-      fontSize: 14,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.medium,
     },
     debugRow: {
       flexDirection: "row",
@@ -510,16 +535,16 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
     },
     debugKey: {
       flex: 1,
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.regular,
     },
     debugValue: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
+      fontSize: fontSize.base,
+      fontFamily: fontWeight.medium,
     },
     debugHint: {
-      fontSize: 11,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.xs,
+      fontFamily: fontWeight.regular,
       marginLeft: 23,
     },
     divider: {

@@ -58,4 +58,22 @@ export const SpoolListUseCase = {
     if (!tagId || !tagId.trim()) return null;
     return SpoolRepository.findByNfcTagId(tagId.trim());
   },
+
+  /**
+   * Multi-match: return ALL spools with the given qr_code.
+   * Scanner uses this to distinguish 0 / 1 / N results.
+   * Existing findByQrCode() is not changed.
+   */
+  async findAllByQrCode(qr: string): Promise<SpoolView[]> {
+    if (!qr || !qr.trim()) return [];
+    return SpoolRepository.findAllByQrCode(qr.trim());
+  },
+
+  /**
+   * Multi-match: return ALL spools with the given nfc_tag_id.
+   */
+  async findAllByNfcTagId(tagId: string): Promise<SpoolView[]> {
+    if (!tagId || !tagId.trim()) return [];
+    return SpoolRepository.findAllByNfcTagId(tagId.trim());
+  },
 };

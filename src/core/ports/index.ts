@@ -99,7 +99,7 @@ export interface UpdateFilamentPatch {
   colorNameNormalized?: string;
   /** Set by FilamentUseCase after normalization — #RRGGBB. */
   colorHexNormalized?: string;
-  /** Spoolman-sourced hex — written by sync, not by user edits. */
+  /** Remote-sourced hex — written by sync, not by user edits. */
   colorHex?: string;
   manufacturerLocalId?: string;
   weight?: number;
@@ -260,8 +260,8 @@ export interface ISpoolStatsRepository {
 
 // ─── External Filament System Port — backend-neutral DTOs ────────────────────
 //
-// All field names are camelCase and carry no Spoolman-specific naming.
-// Concrete adapters (SpoolmanAdapter, future FilaBroAdapter, …) are
+// All field names are camelCase and carry no remote-specific naming.
+// Concrete adapters (FilaBaseAdapter, future second backend adapters, …) are
 // responsible for translating between their native API shape and these types.
 
 export interface RemoteManufacturerDTO {

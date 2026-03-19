@@ -16,7 +16,7 @@
  *   falling back to SpoolSyncRecord.remainingWeight for pre-Phase-4 data.
  *
  * Phase 5/6:
- *   SpoolmanClient is no longer imported here. push() and pushOne() receive
+ *   FilaBaseClient is no longer imported here. push() and pushOne() receive
  *   IExternalFilamentSystemPort from the caller so the transport is swappable.
  */
 import { getDb } from "../db/client";
