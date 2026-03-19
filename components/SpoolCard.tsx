@@ -59,8 +59,8 @@ export function SpoolCard({
   const entryY = useSharedValue(12);
 
   useEffect(() => {
-    const delay = Math.min(index * 38, 260);
-    entryOpacity.value = withDelay(delay, withTiming(1, { duration: 260 }));
+    const delay = Math.min(index * 40, 280);
+    entryOpacity.value = withDelay(delay, withTiming(1, { duration: 320 }));
     entryY.value = withDelay(delay, withSpring(0, { damping: 22, stiffness: 200 }));
   }, []);
 

@@ -1,96 +1,121 @@
-/**
- * EmptyState – FilaBro UI System
- *
- * Universeller Leer-/Fehler-/Lade-Zustand.
- * Ersetzt die dreifach redundante Variante in index.tsx
- * und die Kamera-Permission-Seite im scanner.tsx.
- */
-
-import React, { ReactNode } from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
-  StyleSheet,
+  Pressable,
   ActivityIndicator,
-  ViewStyle,
+  StyleSheet,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppTheme } from "@/contexts/AppContext";
-import { spacing, typography } from "@/constants/ui";
+import { spacing, radius, fontSize, fontWeight } from "@/constants/ui";
+
+type IoniconsName = React.ComponentProps<typeof Ionicons>["name"];
 
 interface EmptyStateProps {
-  /** Ionicons-Icon-Name ODER eigene Icon-Komponente als ReactNode */
-  icon?: keyof typeof Ionicons.glyphMap | ReactNode;
   title: string;
-  body?: string;
-  /** Optionaler Aktions-Slot: z.B. ein PrimaryButton */
-  action?: ReactNode;
-  /** Ladeindikator anzeigen (überschreibt icon) */
+  message: string;
+  icon?: IoniconsName;
+  actionLabel?: string;
+  onAction?: () => void;
   loading?: boolean;
-  style?: ViewStyle;
 }
 
 export function EmptyState({
-  icon,
   title,
-  body,
-  action,
+  message,
+  icon,
+  actionLabel,
+  onAction,
   loading = false,
-  style,
 }: EmptyStateProps) {
   const { colors } = useAppTheme();
 
-  const iconElement = (() => {
-    if (loading) {
-      return <ActivityIndicator size="large" color={colors.accent} />;
-    }
-    if (icon == null) return null;
-    if (typeof icon === "string") {
-      return (
-        <Ionicons
-          name={icon as keyof typeof Ionicons.glyphMap}
-          size={56}
-          color={colors.textTertiary}
-        />
-      );
-    }
-    return icon as ReactNode;
-  })();
+  const breathe = useSharedValue(1);
+  useEffect(() => {
+    breathe.value = withRepeat(
+      withSequence(
+        withTiming(1.08, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.00, { duration: 1800, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      false
+    );
+  }, []);
+
+  const breatheStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: breathe.value }],
+  }));
 
   return (
-    <View style={[styles.root, style]}>
-      {iconElement}
-      <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-      {body != null && (
-        <Text style={[styles.body, { color: colors.textSecondary }]}>
-          {body}
-        </Text>
+    <View style={styles.container}>
+      {loading ? (
+        <ActivityIndicator color={colors.accent} size="large" />
+      ) : (
+        icon !== undefined && (
+          <Animated.View style={breatheStyle}>
+            <Ionicons name={icon} size={48} color={colors.textTertiary} />
+          </Animated.View>
+        )
       )}
-      {action != null && <View style={styles.actionSlot}>{action}</View>}
+
+      {!loading && (
+        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+      )}
+
+      <Text style={[styles.message, { color: colors.textSecondary }]}>
+        {message}
+      </Text>
+
+      {!loading && actionLabel != null && onAction != null && (
+        <Pressable
+          style={[styles.button, { backgroundColor: colors.accent }]}
+          onPress={onAction}
+        >
+          <Text style={styles.buttonText}>{actionLabel}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex:           1,
-    alignItems:     "center",
+  container: {
+    flex: 1,
+    alignItems: "center",
     justifyContent: "center",
-    gap:            spacing.md,
-    paddingHorizontal: spacing.xxl,
-    paddingVertical:   spacing.xxl,
+    gap: spacing.md,
+    paddingHorizontal: spacing.xxxl,
+    paddingTop: 60,
   },
   title: {
-    ...(typography.heading as object),
+    fontSize: fontSize.h3,
+    fontFamily: fontWeight.semibold,
     textAlign: "center",
   },
-  body: {
-    ...(typography.bodySm as object),
+  message: {
+    fontSize: fontSize.md,
+    fontFamily: fontWeight.regular,
     textAlign: "center",
-    marginTop: -spacing.xs,
+    lineHeight: 20,
   },
-  actionSlot: {
-    marginTop: spacing.sm,
-    width:     "100%",
+  button: {
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.md,
+    marginTop: spacing.xs,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: fontSize.lg,
+    fontFamily: fontWeight.semibold,
   },
 });
