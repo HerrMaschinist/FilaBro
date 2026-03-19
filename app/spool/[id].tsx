@@ -10,6 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { useLocalSearchParams, Stack, router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -117,20 +118,23 @@ export default function SpoolDetailScreen() {
   const s = makeStyles(colors, isDark);
   const bottomInset = insets.bottom + (Platform.OS === "web" ? 34 : 0);
 
+  const gradStart = isDark ? "#0B0F1A" : "#F0F4FA";
+  const gradEnd   = isDark ? "#0F1425" : "#E8EFF9";
+
   if (!spool) {
     return (
-      <View style={[s.center, { backgroundColor: colors.background }]}>
+      <LinearGradient colors={[gradStart, gradEnd]} style={s.center}>
         <Stack.Screen options={{ title: t("detail.not_found") }} />
         <Text style={[s.notFound, { color: colors.textSecondary }]}>
           {t("detail.not_found")}
         </Text>
-      </View>
+      </LinearGradient>
     );
   }
 
   return (
+    <LinearGradient colors={[gradStart, gradEnd]} style={{ flex: 1 }}>
     <ScrollView
-      style={{ backgroundColor: colors.background }}
       contentContainerStyle={[s.content, { paddingBottom: bottomInset + 40 }]}
       showsVerticalScrollIndicator={false}
     >
@@ -358,6 +362,7 @@ export default function SpoolDetailScreen() {
         </View>
       </GlassCard>
     </ScrollView>
+    </LinearGradient>
   );
 }
 

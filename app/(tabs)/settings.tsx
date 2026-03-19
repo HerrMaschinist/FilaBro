@@ -193,7 +193,7 @@ export default function SettingsScreen() {
 
         <Text style={[s.label, { color: colors.textSecondary }]}>{t("settings.server_url")}</Text>
         <TextInput
-          style={[s.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.surfaceBorder }]}
+          style={[s.input, { backgroundColor: colors.surfaceElevated, color: colors.text, borderColor: colors.surfaceBorder }]}
           value={urlInput}
           onChangeText={(v) => { setUrlInput(v); setTestState("idle"); setTestMessage(""); }}
           placeholder="http://192.168.1.x:7912"
