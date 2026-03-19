@@ -14,6 +14,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
@@ -117,17 +118,34 @@ export function SpoolCard({
           <View
             style={[
               s.card,
-              {
-                backgroundColor: glassBg,
-                borderColor: glassBorder,
-              },
+              { borderColor: glassBorder },
               lowGlow,
               Platform.OS === "web" && {
+                backgroundColor: glassBg,
                 backdropFilter: "blur(24px)",
                 WebkitBackdropFilter: "blur(24px)",
               } as any,
             ]}
           >
+            {Platform.OS !== "web" && (
+              <BlurView
+                intensity={isDark ? 55 : 40}
+                tint={isDark ? "dark" : "light"}
+                style={StyleSheet.absoluteFill}
+              />
+            )}
+            {Platform.OS !== "web" && (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    backgroundColor: isDark
+                      ? "rgba(17,24,39,0.55)"
+                      : "rgba(255,255,255,0.60)",
+                  },
+                ]}
+              />
+            )}
             <LinearGradient
               colors={[filamentColor, filamentColor + "30"]}
               start={{ x: 0, y: 0 }}
