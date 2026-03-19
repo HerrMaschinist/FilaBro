@@ -31,15 +31,6 @@ function getColorHex(spool: Spool): string | undefined {
   return spool.filament?.color_hex;
 }
 
-function getFilamentLabel(spool: Spool): string {
-  const f = spool.filament;
-  if (!f) return `Spool #${spool.id}`;
-  const parts: string[] = [];
-  if (f.vendor?.name) parts.push(f.vendor.name);
-  if (f.name) parts.push(f.name);
-  if (f.material) parts.push(f.material);
-  return parts.join(" · ") || `Spool #${spool.id}`;
-}
 
 export default function SpoolDetailScreen() {
   const { t } = useTranslation();
@@ -154,9 +145,23 @@ export default function SpoolDetailScreen() {
       />
 
       <View style={s.headerBlock}>
-        <Text style={[s.title, { color: colors.text }]}>
-          {getFilamentLabel(spool)}
-        </Text>
+        <View style={s.titleBlock}>
+          {spool.filament?.vendor?.name && (
+            <Text style={[s.titleVendor, { color: colors.textSecondary }]}>
+              {spool.filament.vendor.name}
+            </Text>
+          )}
+          <Text style={[s.titleName, { color: colors.text }]} numberOfLines={2}>
+            {spool.filament?.name ?? `Spool #${spool.id}`}
+          </Text>
+          {spool.filament?.material && (
+            <View style={[s.materialBadge, { backgroundColor: `${colors.accent}1A` }]}>
+              <Text style={[s.materialBadgeText, { color: colors.accent }]}>
+                {spool.filament.material}
+              </Text>
+            </View>
+          )}
+        </View>
         {spool.lot_nr && (
           <Text style={[s.sub, { color: colors.textSecondary }]}>
             {t("detail.lot")} {spool.lot_nr}
@@ -202,12 +207,22 @@ export default function SpoolDetailScreen() {
             />
           </View>
           <View style={s.weightRow}>
-            <Text style={[s.weightNum, { color: colors.text }]}>
-              {Math.round(remaining)}g
-            </Text>
-            <Text style={[s.weightTotal, { color: colors.textSecondary }]}>
-              / {Math.round(total)}g
-            </Text>
+            <View style={s.weightMain}>
+              <Text style={[s.weightNum, { color: barColor }]}>
+                {Math.round(remaining)}
+              </Text>
+              <Text style={[s.weightUnit, { color: colors.textSecondary }]}>g</Text>
+            </View>
+            <View style={s.weightMeta}>
+              <Text style={[s.weightTotal, { color: colors.textTertiary }]}>
+                von {Math.round(total)}g
+              </Text>
+              <Text style={[s.weightTare, { color: colors.textTertiary }]}>
+                {spool.filament?.weight != null
+                  ? `Leer: ${Math.round((spool.filament.weight ?? 0) - (spool.initial_weight ?? 0))}g`
+                  : ""}
+              </Text>
+            </View>
           </View>
         </View>
       </GlassCard>
@@ -431,10 +446,31 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       marginBottom: 16,
       gap: 8,
     },
-    title: {
-      fontSize: 22,
+    titleBlock: {
+      gap: 4,
+      marginBottom: 2,
+    },
+    titleVendor: {
+      fontSize: 13,
+      fontFamily: "Inter_500Medium",
+      letterSpacing: 0.2,
+    },
+    titleName: {
+      fontSize: 24,
       fontFamily: "Inter_700Bold",
       letterSpacing: -0.5,
+      lineHeight: 28,
+    },
+    materialBadge: {
+      alignSelf: "flex-start",
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+    },
+    materialBadgeText: {
+      fontSize: 12,
+      fontFamily: "Inter_600SemiBold",
+      letterSpacing: 0.3,
     },
     sub: {
       fontSize: 13,
@@ -497,16 +533,35 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
     },
     weightRow: {
       flexDirection: "row",
+      alignItems: "flex-end",
+      justifyContent: "space-between",
+      marginTop: 10,
+    },
+    weightMain: {
+      flexDirection: "row",
       alignItems: "baseline",
-      marginTop: 8,
-      gap: 4,
+      gap: 2,
     },
     weightNum: {
-      fontSize: 28,
+      fontSize: 36,
       fontFamily: "Inter_700Bold",
+      letterSpacing: -1,
+    },
+    weightUnit: {
+      fontSize: 18,
+      fontFamily: "Inter_400Regular",
+      marginBottom: 2,
+    },
+    weightMeta: {
+      alignItems: "flex-end",
+      gap: 2,
     },
     weightTotal: {
-      fontSize: 15,
+      fontSize: 13,
+      fontFamily: "Inter_400Regular",
+    },
+    weightTare: {
+      fontSize: 11,
       fontFamily: "Inter_400Regular",
     },
     inputRow: {
