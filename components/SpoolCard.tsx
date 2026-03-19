@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { useAppTheme } from "@/contexts/AppContext";
+import { fontWeight } from "@/constants/ui";
 import {
   Spool,
   getFilamentColor,
@@ -206,13 +207,14 @@ export function SpoolCard({
                     />
                   </View>
                 </View>
-                <Text style={[s.weightText, { color: percentColor }]}>
-                  {Math.round(remaining)}
-                  <Text style={[s.weightUnit, { color: colors.textSecondary }]}>g</Text>
-                  <Text style={[s.weightTotal, { color: colors.textTertiary }]}>
-                    {" "}/ {Math.round(total)}g
+                <View style={s.weightBlock}>
+                  <Text style={[s.weightBig, { color: percentColor }]}>
+                    {Math.round(remaining)}
                   </Text>
-                </Text>
+                  <Text style={[s.weightLabel, { color: colors.textSecondary }]}>
+                    g / {Math.round(total)}g
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
@@ -251,7 +253,7 @@ const s = StyleSheet.create({
   name: {
     fontSize: 15,
     fontFamily: "Inter_600SemiBold",
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
   },
   badges: {
     flexDirection: "row",
@@ -297,18 +299,18 @@ const s = StyleSheet.create({
     height: "100%",
     borderRadius: 4,
   },
-  weightText: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-    minWidth: 80,
-    textAlign: "right",
+  weightBlock: {
+    alignItems: "flex-end",
   },
-  weightUnit: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
+  weightBig: {
+    fontSize: 18,
+    fontFamily: fontWeight.bold,
+    letterSpacing: -0.5,
+    lineHeight: 20,
   },
-  weightTotal: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
+  weightLabel: {
+    fontSize: 10,
+    fontFamily: fontWeight.regular,
+    lineHeight: 13,
   },
 });
