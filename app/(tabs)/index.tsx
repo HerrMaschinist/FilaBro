@@ -18,6 +18,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,9 +27,7 @@ import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { SpoolCard } from "@/components/SpoolCard";
 import { FAB } from "@/components/ui/FAB";
-import { AppHeader } from "@/components/ui/AppHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import type { Spool } from "@/lib/spoolViewTypes";
 
 type SortKey = "name" | "remaining" | "material" | "vendor";
@@ -38,7 +37,7 @@ const MATERIALS = ["PLA", "PETG", "ABS", "TPU", "ASA", "PA", "PC"];
 
 export default function SpoolsScreen() {
   const { t } = useTranslation();
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const {
     spools,
@@ -177,93 +176,94 @@ export default function SpoolsScreen() {
 
   const s = makeStyles(colors);
 
+  const gradStart = isDark ? "#0B0F1A" : "#F0F4FA";
+  const gradEnd   = isDark ? "#0F1425" : "#E8EFF9";
+
   return (
-    <View style={[s.container, { paddingTop: topInset }]}>
-      <AppHeader
-        title={t("home.title")}
-        actions={
-          <>
-            {showNoServerBadge && (
-              <View
-                style={[
-                  s.offlineBadge,
-                  { backgroundColor: `${colors.textTertiary}15` },
-                ]}
-              >
-                <Ionicons
-                  name="cloud-offline-outline"
-                  size={14}
-                  color={colors.textTertiary}
-                />
-                <Text
-                  style={[s.offlineText, { color: colors.textTertiary }]}
-                >
-                  {t("home.no_server")}
-                </Text>
-              </View>
-            )}
-            {showOfflineBadge && (
-              <View
-                style={[
-                  s.offlineBadge,
-                  { backgroundColor: `${colors.warning}20` },
-                ]}
-              >
-                <Ionicons
-                  name="cloud-offline-outline"
-                  size={14}
-                  color={colors.warning}
-                />
-                <Text style={[s.offlineText, { color: colors.warning }]}>
-                  {t("home.offline")}
-                </Text>
-              </View>
-            )}
-            {pendingUpdates.length > 0 && (
-              <Pressable
-                onPress={() => {
-                  if (!serverUrl) {
-                    Alert.alert(
-                      t("home.no_server_title"),
-                      t("home.no_server_sub"),
-                      [{ text: t("common.ok") }]
-                    );
-                    return;
-                  }
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  syncPending();
-                }}
-                style={[
-                  s.syncBtn,
-                  { backgroundColor: `${colors.accent}15` },
-                ]}
-              >
-                <Ionicons
-                  name="cloud-upload-outline"
-                  size={16}
-                  color={colors.accent}
-                />
-                <Text style={[s.syncBtnText, { color: colors.accent }]}>
-                  {pendingUpdates.length}
-                </Text>
-              </Pressable>
-            )}
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowFilter(true);
-              }}
-              style={s.iconBtn}
+    <LinearGradient colors={[gradStart, gradEnd]} style={[s.container, { paddingTop: topInset }]}>
+      <View style={s.headerRow}>
+        <Text style={s.title}>{t("home.title")}</Text>
+        <View style={s.headerActions}>
+          {showNoServerBadge && (
+            <View
+              style={[
+                s.offlineBadge,
+                { backgroundColor: `${colors.textTertiary}15` },
+              ]}
             >
               <Ionicons
-                name="options-outline"
-                size={22}
-                color={colors.textSecondary}
+                name="cloud-offline-outline"
+                size={14}
+                color={colors.textTertiary}
               />
+              <Text
+                style={[s.offlineText, { color: colors.textTertiary }]}
+              >
+                {t("home.no_server")}
+              </Text>
+            </View>
+          )}
+          {showOfflineBadge && (
+            <View
+              style={[
+                s.offlineBadge,
+                { backgroundColor: `${colors.warning}20` },
+              ]}
+            >
+              <Ionicons
+                name="cloud-offline-outline"
+                size={14}
+                color={colors.warning}
+              />
+              <Text style={[s.offlineText, { color: colors.warning }]}>
+                {t("home.offline")}
+              </Text>
+            </View>
+          )}
+          {pendingUpdates.length > 0 && (
+            <Pressable
+              onPress={() => {
+                if (!serverUrl) {
+                  Alert.alert(
+                    t("home.no_server_title"),
+                    t("home.no_server_sub"),
+                    [{ text: t("common.ok") }]
+                  );
+                  return;
+                }
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                syncPending();
+              }}
+              style={[
+                s.syncBtn,
+                { backgroundColor: `${colors.accent}15` },
+              ]}
+            >
+              <Ionicons
+                name="cloud-upload-outline"
+                size={16}
+                color={colors.accent}
+              />
+              <Text style={[s.syncBtnText, { color: colors.accent }]}>
+                {pendingUpdates.length}
+              </Text>
             </Pressable>
-          </>
-        }
-      />
+          )}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowFilter(true);
+            }}
+            style={s.iconBtn}
+          >
+            <Ionicons
+              name="options-outline"
+              size={22}
+              color={colors.textSecondary}
+            />
+          </Pressable>
+        </View>
+      </View>
 
       <View
         style={[
@@ -305,24 +305,17 @@ export default function SpoolsScreen() {
         </Text>
       )}
 
-      {connectionStatus === "no_server" && (
-        <View
-          style={[
-            s.offlineBanner,
-            { backgroundColor: `${colors.textTertiary}12`, borderColor: `${colors.textTertiary}30` },
-          ]}
-        >
-          <Ionicons name="cloud-offline-outline" size={15} color={colors.textTertiary} />
-          <Text style={[s.offlineBannerText, { color: colors.textSecondary }]}>
-            {t("home.offline_mode_hint")}
-          </Text>
-          <Pressable onPress={() => router.push("/(tabs)/settings")} hitSlop={8}>
-            <Text style={[s.offlineBannerLink, { color: colors.accent }]}>
-              {t("home.go_to_settings")}
-            </Text>
-          </Pressable>
-        </View>
-      )}
+      {connectionStatus === "no_server" &&
+        spools.length === 0 &&
+        !isSpoolsLoading && (
+          <EmptyState
+            icon="server-outline"
+            title={t("home.no_server_title")}
+            message={t("home.no_server_sub")}
+            actionLabel={t("home.go_to_settings")}
+            onAction={() => router.push("/(tabs)/settings")}
+          />
+        )}
 
       {spoolsError &&
         spools.length === 0 &&
@@ -330,28 +323,30 @@ export default function SpoolsScreen() {
           <EmptyState
             icon="wifi-outline"
             title={t("home.error_title")}
-            body={spoolsError}
-            action={
-              <PrimaryButton
-                label={t("home.retry")}
-                onPress={refreshSpools}
-                testID="retry-load"
-              />
-            }
+            message={spoolsError}
+            actionLabel={t("home.retry")}
+            onAction={refreshSpools}
           />
         )}
 
       {!spoolsError && spools.length === 0 && isSpoolsLoading && (
-        <EmptyState loading title={t("home.loading")} />
-      )}
-
-      {!spoolsError && spools.length === 0 && !isSpoolsLoading && (
         <EmptyState
-          icon="layers-outline"
-          title={t("home.no_spools_title")}
-          body={t("home.no_spools_sub")}
+          title=""
+          message={t("home.loading")}
+          loading
         />
       )}
+
+      {!spoolsError &&
+        spools.length === 0 &&
+        !isSpoolsLoading &&
+        connectionStatus !== "no_server" && (
+          <EmptyState
+            icon="layers-outline"
+            title={t("home.no_spools_title")}
+            message={t("home.no_spools_sub")}
+          />
+        )}
 
       <FlatList
         data={filtered}
@@ -418,7 +413,7 @@ export default function SpoolsScreen() {
         sortDir={sortDir}
         setSortDir={setSortDir}
       />
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -875,7 +870,7 @@ function FilterModal({
 
 function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
+    container: { flex: 1 },
     headerRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -906,26 +901,6 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
     offlineText: {
       fontSize: 12,
       fontFamily: "Inter_500Medium",
-    },
-    offlineBanner: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginHorizontal: 16,
-      marginBottom: 6,
-      borderRadius: 10,
-      borderWidth: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      gap: 8,
-    },
-    offlineBannerText: {
-      flex: 1,
-      fontSize: 13,
-      fontFamily: "Inter_400Regular",
-    },
-    offlineBannerLink: {
-      fontSize: 13,
-      fontFamily: "Inter_600SemiBold",
     },
     syncBtn: {
       flexDirection: "row",
@@ -964,35 +939,6 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       paddingBottom: 4,
     },
     list: { paddingTop: 4 },
-    centered: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-      paddingHorizontal: 32,
-      paddingTop: 60,
-    },
-    emptyTitle: {
-      fontSize: 20,
-      fontFamily: "Inter_600SemiBold",
-    },
-    emptyText: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
-      textAlign: "center",
-      lineHeight: 20,
-    },
-    retryBtn: {
-      borderRadius: 12,
-      paddingHorizontal: 24,
-      paddingVertical: 12,
-      marginTop: 4,
-    },
-    retryBtnText: {
-      color: "#000",
-      fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
-    },
     modalOverlay: {
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.5)",

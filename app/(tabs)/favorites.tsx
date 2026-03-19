@@ -7,16 +7,18 @@ import {
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { SpoolCard } from "@/components/SpoolCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { fontSize, fontWeight } from "@/constants/ui";
 import type { Spool } from "@/lib/spoolViewTypes";
 
 export default function FavoritesScreen() {
   const { t } = useTranslation();
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { spools, favorites, toggleFavorite, isFavorite, pendingUpdates } = useApp();
 
@@ -34,8 +36,11 @@ export default function FavoritesScreen() {
 
   const s = makeStyles(colors);
 
+  const gradStart = isDark ? "#0B0F1A" : "#F0F4FA";
+  const gradEnd   = isDark ? "#0F1425" : "#E8EFF9";
+
   return (
-    <View style={[s.container, { paddingTop: topInset }]}>
+    <LinearGradient colors={[gradStart, gradEnd]} style={[s.container, { paddingTop: topInset }]}>
       <View style={s.headerRow}>
         <Text style={s.title}>{t("favorites.title")}</Text>
         <Text style={[s.count, { color: colors.textSecondary }]}>
@@ -44,13 +49,11 @@ export default function FavoritesScreen() {
       </View>
 
       {favoriteSpools.length === 0 ? (
-        <View style={s.empty}>
-          <Ionicons name="heart-outline" size={64} color={colors.textTertiary} />
-          <Text style={[s.emptyTitle, { color: colors.text }]}>{t("favorites.empty_title")}</Text>
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-            {t("favorites.empty_sub")}
-          </Text>
-        </View>
+        <EmptyState
+          icon="heart-outline"
+          title={t("favorites.empty_title")}
+          message={t("favorites.empty_sub")}
+        />
       ) : (
         <FlatList
           data={favoriteSpools}
@@ -74,13 +77,13 @@ export default function FavoritesScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
-    </View>
+    </LinearGradient>
   );
 }
 
 function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
+    container: { flex: 1 },
     headerRow: {
       flexDirection: "row",
       alignItems: "flex-end",
@@ -90,33 +93,16 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
       paddingBottom: 12,
     },
     title: {
-      fontSize: 32,
-      fontFamily: "Inter_700Bold",
+      fontSize: fontSize.h1,
+      fontFamily: fontWeight.bold,
       color: colors.text,
       letterSpacing: -1,
     },
     count: {
-      fontSize: 14,
-      fontFamily: "Inter_400Regular",
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.regular,
       paddingBottom: 4,
     },
     list: { paddingTop: 4 },
-    empty: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-      paddingHorizontal: 40,
-    },
-    emptyTitle: {
-      fontSize: 22,
-      fontFamily: "Inter_600SemiBold",
-    },
-    emptyText: {
-      fontSize: 15,
-      fontFamily: "Inter_400Regular",
-      textAlign: "center",
-      lineHeight: 22,
-    },
   });
 }

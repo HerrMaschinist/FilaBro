@@ -13,6 +13,7 @@ import Animated, {
   withDelay,
   withTiming,
 } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
@@ -51,6 +52,7 @@ export function SpoolCard({
   const total = spool.initial_weight ?? spool.filament?.weight ?? 1000;
 
   const scale = useSharedValue(1);
+  const lift = useSharedValue(0);
 
   const entryOpacity = useSharedValue(0);
   const entryY = useSharedValue(12);
@@ -62,7 +64,10 @@ export function SpoolCard({
   }, []);
 
   const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [
+      { scale: scale.value },
+      { translateY: lift.value },
+    ],
   }));
 
   const entryStyle = useAnimatedStyle(() => ({
@@ -70,12 +75,7 @@ export function SpoolCard({
     transform: [{ translateY: entryY.value }],
   }));
 
-  const handlePress = () => {
-    scale.value = withSpring(0.97, { damping: 18, stiffness: 350 }, () => {
-      scale.value = withSpring(1, { damping: 15, stiffness: 280 });
-    });
-    onPress();
-  };
+  const handlePress = () => { onPress(); };
 
   const handleFav = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -92,10 +92,28 @@ export function SpoolCard({
   const glassBg = isDark ? "rgba(17,24,39,0.65)" : "rgba(255,255,255,0.72)";
   const glassBorder = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
 
+  const lowGlow = percent < 20 ? {
+    shadowColor:   percentColor,
+    shadowOpacity: 0.32,
+    shadowRadius:  14,
+    shadowOffset:  { width: 0, height: 4 } as const,
+    elevation:     percent < 15 ? 10 : 6,
+  } : {};
+
   return (
     <Animated.View style={entryStyle}>
       <Animated.View style={pressStyle}>
-        <Pressable onPress={handlePress} style={({ pressed }) => [{ opacity: pressed ? 0.95 : 1 }]}>
+        <Pressable
+          onPress={handlePress}
+          onPressIn={() => {
+            scale.value = withSpring(1.015, { damping: 16, stiffness: 380 });
+            lift.value  = withSpring(-2,    { damping: 16, stiffness: 380 });
+          }}
+          onPressOut={() => {
+            scale.value = withSpring(1, { damping: 14, stiffness: 260 });
+            lift.value  = withSpring(0, { damping: 14, stiffness: 260 });
+          }}
+        >
           <View
             style={[
               s.card,
@@ -103,13 +121,19 @@ export function SpoolCard({
                 backgroundColor: glassBg,
                 borderColor: glassBorder,
               },
+              lowGlow,
               Platform.OS === "web" && {
                 backdropFilter: "blur(24px)",
                 WebkitBackdropFilter: "blur(24px)",
               } as any,
             ]}
           >
-            <View style={[s.colorBar, { backgroundColor: filamentColor }]} />
+            <LinearGradient
+              colors={[filamentColor, filamentColor + "30"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={s.colorBar}
+            />
             <View style={s.content}>
               <View style={s.topRow}>
                 <View style={s.nameWrap}>
