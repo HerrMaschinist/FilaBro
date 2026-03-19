@@ -1,7 +1,7 @@
 const de = {
   onboarding: {
     title: "FilaBro",
-    subtitle: "Verwalte deine Filamentsammlung über Spoolman.",
+    subtitle: "Verwalte deine Filamentsammlung mit FilaBro.",
     server_url_label: "SERVER-URL",
     http_hint: "HTTP wird für lokale Netzwerke und VPN-IPs unterstützt.",
     test_connection: "Verbindung testen",
@@ -9,7 +9,7 @@ const de = {
     skip: "Überspringen. Offline nutzen.",
     skip_hint: "Du kannst den Server später in den Einstellungen verbinden.",
     connected: "Verbunden",
-    spoolman_version: "Spoolman v{{version}}",
+    filabase_version: "FilaBase v{{version}}",
     server_version: "Server v{{version}}",
     error_type: {
       timeout: "Zeitüberschreitung. Server hat zu lange gebraucht.",

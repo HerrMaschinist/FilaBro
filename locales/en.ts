@@ -1,7 +1,7 @@
 const en = {
   onboarding: {
     title: "FilaBro",
-    subtitle: "Manage your filament collection via Spoolman.",
+    subtitle: "Manage your filament collection with FilaBro.",
     server_url_label: "SERVER URL",
     http_hint: "HTTP is supported for local networks and VPN mesh IPs.",
     test_connection: "Test Connection",
@@ -9,7 +9,7 @@ const en = {
     skip: "Skip. Use offline.",
     skip_hint: "You can connect a server later in Settings.",
     connected: "Connected",
-    spoolman_version: "Spoolman v{{version}}",
+    filabase_version: "FilaBase v{{version}}",
     server_version: "Server v{{version}}",
     error_type: {
       timeout: "Timeout. Server took too long to respond.",

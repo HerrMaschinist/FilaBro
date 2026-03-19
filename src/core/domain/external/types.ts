@@ -5,11 +5,11 @@
  * Domain entities do NOT carry remoteId as a required field or identity.
  * External references are tracked separately per system.
  *
- * Currently only "filabase" and "spoolman_legacy" are supported external systems.
+ * Currently only "filabase" and "filabase_legacy" are supported external systems.
  * Future: "bambu", "orca", etc.
  */
 
-export type ExternalSystem = "filabase" | "spoolman_legacy";
+export type ExternalSystem = "filabase" | "filabase_legacy";
 
 export type EntityType = "spool" | "filament" | "manufacturer";
 
