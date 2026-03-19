@@ -20,6 +20,8 @@ import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { MATERIALS } from "@/src/features/catalog/CatalogService";
 import { normalizeColor } from "@/src/core/application/filament/ColorNormalizer";
 import { FilamentUseCase } from "@/src/core/application/FilamentUseCase";
+import { CatalogRepository, CatalogSearchResult } from "@/src/data/repositories/CatalogRepository";
+import { isCatalogReady } from "@/src/data/db/catalog_client";
 
 function safeBack() {
   if (router.canGoBack()) {
@@ -50,6 +52,11 @@ export default function AddFilamentScreen() {
   const [saving, setSaving] = useState(false);
   const [showMfrPicker, setShowMfrPicker] = useState(false);
 
+  // OFD Catalog search
+  const [showCatalogSearch, setShowCatalogSearch] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogResults, setCatalogResults] = useState<CatalogSearchResult[]>([]);
+
   const selectedMfr = manufacturers.find(
     (m) => m.localId === manufacturerLocalId
   );
@@ -71,6 +78,31 @@ export default function AddFilamentScreen() {
       if (defaults.bedTempCMin) setBedTempCMin(String(defaults.bedTempCMin));
       if (defaults.bedTempCMax) setBedTempCMax(String(defaults.bedTempCMax));
     }
+  };
+
+  const handleCatalogSearch = (query: string) => {
+    setCatalogQuery(query);
+    if (query.trim().length < 2) {
+      setCatalogResults([]);
+      return;
+    }
+    if (!isCatalogReady()) return;
+    const results = CatalogRepository.searchByName(query);
+    setCatalogResults(results.slice(0, 30));
+  };
+
+  const applyCatalogResult = (result: CatalogSearchResult) => {
+    setName(result.filament.name);
+    setMaterial(result.filament.material);
+    if (result.filament.minPrintTemp) setPrintTempCMin(String(result.filament.minPrintTemp));
+    if (result.filament.maxPrintTemp) setPrintTempCMax(String(result.filament.maxPrintTemp));
+    if (result.filament.minBedTemp) setBedTempCMin(String(result.filament.minBedTemp));
+    if (result.filament.maxBedTemp) setBedTempCMax(String(result.filament.maxBedTemp));
+    if (result.variant.colorHex) setColorInput(result.variant.colorHex);
+    setShowCatalogSearch(false);
+    setCatalogQuery("");
+    setCatalogResults([]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleSave = async () => {
@@ -188,6 +220,16 @@ export default function AddFilamentScreen() {
             },
           ]}
         >
+          <Pressable
+            onPress={() => setShowCatalogSearch(true)}
+            style={[styles.catalogBtn, { backgroundColor: `${colors.accent}15`, borderColor: `${colors.accent}30` }]}
+          >
+            <Ionicons name="search-outline" size={16} color={colors.accent} />
+            <Text style={[styles.catalogBtnText, { color: colors.accent }]}>
+              Aus Katalog importieren
+            </Text>
+          </Pressable>
+
           <Text style={[styles.label, { color: colors.textSecondary }]}>
             {t("form.name")} *
           </Text>
@@ -512,6 +554,64 @@ export default function AddFilamentScreen() {
       </ScrollView>
 
       <Modal
+        visible={showCatalogSearch}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowCatalogSearch(false)}
+      >
+        <View style={styles.catalogModalOverlay}>
+          <View style={[styles.catalogSheet, { backgroundColor: colors.surface }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.surfaceBorder }]} />
+            <Text style={[styles.sheetTitle, { color: colors.text }]}>Katalog durchsuchen</Text>
+            <View style={[styles.catalogSearchRow, { backgroundColor: colors.surfaceElevated, borderColor: colors.surfaceBorder }]}>
+              <Ionicons name="search-outline" size={18} color={colors.textTertiary} />
+              <TextInput
+                style={[styles.catalogSearchInput, { color: colors.text }]}
+                value={catalogQuery}
+                onChangeText={handleCatalogSearch}
+                placeholder="Hersteller, Material oder Name..."
+                placeholderTextColor={colors.textTertiary}
+                autoFocus
+              />
+            </View>
+            <FlatList
+              data={catalogResults}
+              keyExtractor={(item) => item.variant.id}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={[styles.catalogItem, { borderBottomColor: colors.surfaceBorder }]}
+                  onPress={() => applyCatalogResult(item)}
+                >
+                  <View style={[styles.catalogColorDot, { backgroundColor: item.variant.colorHex ?? colors.textTertiary }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.catalogItemName, { color: colors.text }]} numberOfLines={1}>
+                      {item.brand.name} – {item.filament.name}
+                    </Text>
+                    <Text style={[styles.catalogItemSub, { color: colors.textSecondary }]}>
+                      {item.filament.material} · {item.variant.name}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                catalogQuery.length >= 2 ? (
+                  <Text style={[styles.catalogEmpty, { color: colors.textTertiary }]}>Keine Treffer</Text>
+                ) : null
+              }
+              keyboardShouldPersistTaps="handled"
+            />
+            <Pressable
+              onPress={() => setShowCatalogSearch(false)}
+              style={[styles.catalogCloseBtn, { backgroundColor: colors.surfaceElevated }]}
+            >
+              <Text style={{ color: colors.textSecondary, fontSize: 15, fontFamily: "Inter_500Medium" }}>Schließen</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={showMfrPicker}
         animationType="slide"
         transparent
@@ -801,4 +901,34 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_600SemiBold",
   },
+  colorDotSmall: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  // Catalog search
+  catalogBtn: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 4,
+  },
+  catalogBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  catalogModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" as const },
+  catalogSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12, maxHeight: "85%" as const, paddingBottom: 32 },
+  catalogSearchRow: { flexDirection: "row" as const, alignItems: "center" as const, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 8, marginBottom: 12 },
+  catalogSearchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular", padding: 0 },
+  catalogItem: { flexDirection: "row" as const, alignItems: "center" as const, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, gap: 12 },
+  catalogColorDot: { width: 20, height: 20, borderRadius: 10 },
+  catalogItemName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  catalogItemSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  catalogEmpty: { textAlign: "center" as const, paddingVertical: 32, fontSize: 14, fontFamily: "Inter_400Regular" },
+  catalogCloseBtn: { marginTop: 12, borderRadius: 12, paddingVertical: 14, alignItems: "center" as const },
 });

@@ -10,6 +10,7 @@ import {
   Platform,
   Modal,
   FlatList,
+  ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,12 +23,61 @@ export default function AddSpoolScreen() {
   const { t } = useTranslation();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { qrCode: qrCodeParam } = useLocalSearchParams<{ qrCode?: string | string[] }>();
-  const { manufacturers, filaments, createSpool } = useApp();
+  const {
+    qrCode: qrCodeParam,
+    prefillName,
+    prefillMaterial,
+    prefillColor,
+    prefillNozzleMin,
+    prefillNozzleMax,
+    prefillBedMin,
+    prefillBedMax,
+    prefillWeight,
+    prefillTare,
+  } = useLocalSearchParams<{
+    qrCode?: string | string[];
+    prefillName?: string;
+    prefillMaterial?: string;
+    prefillColor?: string;
+    prefillNozzleMin?: string;
+    prefillNozzleMax?: string;
+    prefillBedMin?: string;
+    prefillBedMax?: string;
+    prefillWeight?: string;
+    prefillTare?: string;
+  }>();
+  const { manufacturers, filaments, createSpool, createFilament } = useApp();
 
   const initialQrCode = Array.isArray(qrCodeParam)
     ? (qrCodeParam[0] ?? "").trim()
     : (qrCodeParam ?? "").trim();
+
+  const [catalogSuggestion, setCatalogSuggestion] = useState<{
+    name: string;
+    material: string;
+    colorHex: string;
+    nozzleMin: string;
+    nozzleMax: string;
+    bedMin: string;
+    bedMax: string;
+    weight: string;
+    tare: string;
+  } | null>(
+    prefillName
+      ? {
+          name: prefillName ?? "",
+          material: prefillMaterial ?? "",
+          colorHex: prefillColor ?? "",
+          nozzleMin: prefillNozzleMin ?? "",
+          nozzleMax: prefillNozzleMax ?? "",
+          bedMin: prefillBedMin ?? "",
+          bedMax: prefillBedMax ?? "",
+          weight: prefillWeight ?? "",
+          tare: prefillTare ?? "",
+        }
+      : null
+  );
+  const [applyingCatalog, setApplyingCatalog] = useState(false);
 
   const [filamentLocalId, setFilamentLocalId] = useState("");
   const [initialWeight, setInitialWeight] = useState("");
@@ -62,6 +112,38 @@ export default function AddSpoolScreen() {
       })),
     [filaments, manufacturers]
   );
+
+  const applyCatalogSuggestion = async () => {
+    if (!catalogSuggestion || applyingCatalog) return;
+    setApplyingCatalog(true);
+    try {
+      const spec: any = {};
+      if (catalogSuggestion.nozzleMin) spec.printTempCMin = Number(catalogSuggestion.nozzleMin);
+      if (catalogSuggestion.nozzleMax) spec.printTempCMax = Number(catalogSuggestion.nozzleMax);
+      if (catalogSuggestion.bedMin) spec.bedTempCMin = Number(catalogSuggestion.bedMin);
+      if (catalogSuggestion.bedMax) spec.bedTempCMax = Number(catalogSuggestion.bedMax);
+      const filament = await createFilament({
+        name: catalogSuggestion.name,
+        material: catalogSuggestion.material,
+        colorHex: catalogSuggestion.colorHex || undefined,
+        weight: catalogSuggestion.weight ? Number(catalogSuggestion.weight) : undefined,
+        spoolWeight: catalogSuggestion.tare ? Number(catalogSuggestion.tare) : undefined,
+        spec: Object.keys(spec).length > 0 ? spec : undefined,
+      });
+      console.log("createFilament result:", filament);
+      if (filament) {
+        setFilamentLocalId(filament.localId);
+        if (catalogSuggestion.weight) setInitialWeight(catalogSuggestion.weight);
+        if (catalogSuggestion.tare) setSpoolWeight(catalogSuggestion.tare);
+        setCatalogSuggestion(null);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (e) {
+      console.warn("Catalog apply failed:", e);
+    } finally {
+      setApplyingCatalog(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!filamentLocalId) {
@@ -139,6 +221,46 @@ export default function AddSpoolScreen() {
             <Ionicons name="close" size={28} color={colors.textSecondary} />
           </Pressable>
         </View>
+
+        {catalogSuggestion && (
+          <View style={[styles.catalogBanner, {
+            backgroundColor: `${colors.accent}12`,
+            borderColor: `${colors.accent}30`,
+          }]}>
+            <View style={styles.catalogBannerLeft}>
+              {catalogSuggestion.colorHex ? (
+                <View style={[styles.catalogColorDot, { backgroundColor: catalogSuggestion.colorHex }]} />
+              ) : null}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.catalogBannerTitle, { color: colors.text }]} numberOfLines={1}>
+                  {catalogSuggestion.name}
+                </Text>
+                <Text style={[styles.catalogBannerSub, { color: colors.textSecondary }]}>
+                  {catalogSuggestion.material}
+                  {catalogSuggestion.weight ? ` · ${catalogSuggestion.weight}g` : ""}
+                  {catalogSuggestion.nozzleMin && catalogSuggestion.nozzleMax
+                    ? ` · ${catalogSuggestion.nozzleMin}–${catalogSuggestion.nozzleMax}°C`
+                    : ""}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.catalogBannerActions}>
+              <Pressable
+                onPress={applyCatalogSuggestion}
+                disabled={applyingCatalog}
+                style={[styles.catalogBannerBtn, { backgroundColor: colors.accent }]}
+              >
+                {applyingCatalog
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.catalogBannerBtnText}>Übernehmen</Text>
+                }
+              </Pressable>
+              <Pressable onPress={() => setCatalogSuggestion(null)} hitSlop={8}>
+                <Ionicons name="close" size={18} color={colors.textTertiary} />
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         <View
           style={[
@@ -659,6 +781,50 @@ const styles = StyleSheet.create({
   },
   createNewText: {
     fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  catalogBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 16,
+    gap: 10,
+  },
+  catalogBannerLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  catalogColorDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  catalogBannerTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  catalogBannerSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  catalogBannerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  catalogBannerBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  catalogBannerBtnText: {
+    color: "#fff",
+    fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
 });

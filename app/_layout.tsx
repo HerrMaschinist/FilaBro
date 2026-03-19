@@ -18,6 +18,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { initDatabase } from "@/src/data/db/client";
 import { initCatalogDatabase } from "@/src/data/db/catalog_client";
+import { initFilabaseDatabase } from "@/src/data/db/filabase_client";
 import { useAppTheme } from "@/contexts/AppContext";
 
 // Run SQLite migrations synchronously before any component mounts.
@@ -107,9 +108,12 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    // Copy bundled OFD catalog DB to document directory on first launch.
+    // Copy bundled catalog DBs to document directory on first launch.
     initCatalogDatabase().catch((e) =>
       console.warn("[CatalogDB] init failed:", e)
+    );
+    initFilabaseDatabase().catch((e) =>
+      console.warn("[FilabaseDB] init failed:", e)
     );
   }, []);
 

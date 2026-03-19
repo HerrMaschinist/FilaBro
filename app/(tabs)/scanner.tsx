@@ -17,7 +17,7 @@ import Animated, {
   withSequence,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
@@ -31,6 +31,10 @@ import {
 } from "@/src/features/nfc";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { fontSize, fontWeight } from "@/constants/ui";
+import { FilabaseRepository } from "@/src/data/repositories/FilabaseRepository";
+import { CatalogRepository, CatalogGtinResult } from "@/src/data/repositories/CatalogRepository";
+import { isFilabaseReady } from "@/src/data/db/filabase_client";
+import { isCatalogReady } from "@/src/data/db/catalog_client";
 
 type ScanMode = "qr" | "nfc";
 type NfcScanState = "idle" | "checking" | "scanning" | "success" | "error";
@@ -42,6 +46,11 @@ function extractSpoolId(data: string): number | null {
   const qMatch = data.match(/[?&](?:spool_?id|id)=(\d+)/i);
   if (qMatch) return parseInt(qMatch[1], 10);
   return null;
+}
+
+function isLikelyGtin(data: string): boolean {
+  // EAN-8, EAN-13, UPC-A, UPC-E, GTIN-14
+  return /^\d{8}$|^\d{12}$|^\d{13}$|^\d{14}$/.test(data.trim());
 }
 
 export default function ScannerScreen() {
@@ -59,6 +68,7 @@ export default function ScannerScreen() {
   const [mode, setMode] = useState<ScanMode>("qr");
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const scanLockRef = React.useRef(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
 
   const [nfcAvailability, setNfcAvailability] = useState<NfcAvailability | null>(null);
@@ -207,6 +217,14 @@ export default function ScannerScreen() {
     : "rgba(0,0,0,0.38)";
 
   // ─── "Spool not found" handlers ───────────────────────────────────────────
+  // ─── Reset scan lock on focus ──────────────────────────────
+  useFocusEffect(
+    React.useCallback(() => {
+      scanLockRef.current = false;
+      setScanned(false);
+    }, [])
+  );
+
   const openNotFoundSheet = useCallback((spoolId: number) => {
     setPendingSpoolId(spoolId);
     setNotFoundSheet(true);
@@ -260,10 +278,74 @@ export default function ScannerScreen() {
   // ─── QR scan handler ──────────────────────────────────────────────────────
   const handleBarcode = useCallback(
     ({ data }: { data: string }) => {
-      if (scanned) return;
+      if (scanned || scanLockRef.current) return;
+      scanLockRef.current = true;
       setScanned(true);
       setLastResult(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // GTIN-Lookup gegen Katalog-DBs
+      if (isLikelyGtin(data)) {
+        let catalogName = "";
+        let catalogMaterial = "";
+        let catalogColor = "";
+        let catalogNozzleMin = "";
+        let catalogNozzleMax = "";
+        let catalogBedMin = "";
+        let catalogBedMax = "";
+        let catalogWeight = "";
+        let catalogTare = "";
+        let found = false;
+        // 1. FilaBase-Lookup (hat GTIN-Abdeckung)
+        if (isFilabaseReady()) {
+          const fb = FilabaseRepository.findByGtin(data.trim());
+          if (fb) {
+            catalogName = fb.filamentName;
+            catalogMaterial = fb.material;
+            catalogColor = fb.colorHex ?? "";
+            catalogNozzleMin = fb.temperatureNozzleMinC ? String(fb.temperatureNozzleMinC) : "";
+            catalogNozzleMax = fb.temperatureNozzleMaxC ? String(fb.temperatureNozzleMaxC) : "";
+            catalogBedMin = fb.temperatureBedMinC ? String(fb.temperatureBedMinC) : "";
+            catalogBedMax = fb.temperatureBedMaxC ? String(fb.temperatureBedMaxC) : "";
+            catalogWeight = fb.netFilamentWeightG ? String(fb.netFilamentWeightG) : "";
+            catalogTare = fb.tareWeightG ? String(fb.tareWeightG) : "";
+            found = true;
+          }
+        }
+        // 2. OFD-Lookup als Fallback
+        if (!found && isCatalogReady()) {
+          const ofd = CatalogRepository.searchByGtin(data.trim());
+          if (ofd) {
+            catalogName = ofd.filament.name;
+            catalogMaterial = ofd.filament.material;
+            catalogColor = ofd.variant.colorHex ?? "";
+            catalogNozzleMin = ofd.filament.minPrintTemp ? String(ofd.filament.minPrintTemp) : "";
+            catalogNozzleMax = ofd.filament.maxPrintTemp ? String(ofd.filament.maxPrintTemp) : "";
+            catalogBedMin = ofd.filament.minBedTemp ? String(ofd.filament.minBedTemp) : "";
+            catalogBedMax = ofd.filament.maxBedTemp ? String(ofd.filament.maxBedTemp) : "";
+            catalogWeight = ofd.size.filamentWeight ? String(ofd.size.filamentWeight) : "";
+            found = true;
+          }
+        }
+        if (found) {
+          router.push({
+            pathname: "/add-spool",
+            params: {
+              prefillName: catalogName,
+              prefillMaterial: catalogMaterial,
+              prefillColor: catalogColor,
+              prefillNozzleMin: catalogNozzleMin,
+              prefillNozzleMax: catalogNozzleMax,
+              prefillBedMin: catalogBedMin,
+              prefillBedMax: catalogBedMax,
+              prefillWeight: catalogWeight,
+              prefillTare: catalogTare,
+              qrCode: data.trim(),
+            },
+          });
+          return;
+        }
+      }
 
       const spoolId = extractSpoolId(data);
       if (spoolId !== null) {

@@ -20,7 +20,25 @@ export async function initCatalogDatabase(): Promise<void> {
 
   // Prüfen ob DB bereits kopiert
   const fileInfo = await FileSystem.getInfoAsync(dbPath);
-  if (!fileInfo.exists) {
+  let needsCopy = !fileInfo.exists;
+
+  // Versions-Check: Falls DB existiert aber sizes-Tabelle fehlt → neu kopieren
+  if (!needsCopy) {
+    try {
+      const testDb = SQLite.openDatabaseSync(CATALOG_DB_NAME);
+      const tables = testDb.getAllSync<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='sizes'"
+      );
+      if (tables.length === 0) {
+        needsCopy = true;
+        await FileSystem.deleteAsync(dbPath, { idempotent: true });
+      }
+    } catch {
+      needsCopy = true;
+    }
+  }
+
+  if (needsCopy) {
     // Asset laden und kopieren
     const asset = Asset.fromModule(require("../../../assets/ofd_catalog.db"));
     await asset.downloadAsync();
