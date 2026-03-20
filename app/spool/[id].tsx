@@ -8,6 +8,8 @@ import {
   StyleSheet,
   Platform,
   Alert,
+  ActivityIndicator,
+  Modal,
 } from "react-native";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -20,6 +22,12 @@ import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import type { Spool } from "@/lib/spoolViewTypes";
+import { UsageEventRepository } from "@/src/data/repositories/UsageEventRepository";
+import type { UsageEvent } from "@/src/core/domain/usage";
+import { fontWeight } from "@/constants/ui";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { PrinterApiService } from "@/src/adapters/printer/PrinterApiService";
+import type { PrintJob } from "@/src/adapters/printer/types";
 
 function percentColor(pct: number, colors: typeof Colors.dark) {
   if (pct > 50) return colors.success ?? colors.accent;
@@ -44,6 +52,7 @@ export default function SpoolDetailScreen() {
     toggleFavorite,
     isFavorite,
     deleteSpool,
+    printerProfiles,
   } = useApp();
 
   const remoteId = parseInt(id ?? "0", 10);
@@ -53,11 +62,27 @@ export default function SpoolDetailScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const [usageEvents, setUsageEvents] = useState<UsageEvent[]>([]);
+  const [consumeGrams, setConsumeGrams] = useState("");
+  const [consumeNote, setConsumeNote] = useState("");
+  const [consumePrinter, setConsumePrinter] = useState<string | null>(null);
+  const [consumeError, setConsumeError] = useState<string | null>(null);
+  const [isConsuming, setIsConsuming] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [printerJobs, setPrinterJobs] = useState<PrintJob[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+
   useEffect(() => {
     if (spool?.remaining_weight !== undefined) {
       setWeightInput(String(Math.round(spool.remaining_weight)));
     }
   }, [spool?.remaining_weight]);
+
+  useEffect(() => {
+    if (spool?._localId) {
+      UsageEventRepository.listBySpool(spool._localId).then(setUsageEvents);
+    }
+  }, [spool?._localId]);
 
   const remaining = spool?.remaining_weight ?? spool?.initial_weight ?? 0;
   const total = spool?.initial_weight ?? spool?.filament?.weight ?? 1000;
@@ -105,6 +130,49 @@ export default function SpoolDetailScreen() {
       ]
     );
   }, [spool, deleteSpool, t]);
+
+  const handleConsume = useCallback(async () => {
+    if (isConsuming) return;
+    const grams = parseFloat(consumeGrams);
+    const remaining = spool?.remaining_weight ?? 0;
+    if (!grams || grams <= 0) { setConsumeError("Gramm muss > 0 sein."); return; }
+    if (grams >= remaining) { setConsumeError("Verbrauch muss kleiner als Restgewicht sein."); return; }
+    setConsumeError(null);
+    setIsConsuming(true);
+    const newRemaining = remaining - grams;
+    try {
+      if (spool?._localId) {
+        // updateWeight schreibt spool_stats + optimistisches UI-Update via AppContext
+        await updateWeight(spool.id, newRemaining);
+        const events = await UsageEventRepository.listBySpool(spool._localId);
+        setUsageEvents(events);
+        setConsumeGrams("");
+        setConsumeNote("");
+      }
+    } finally {
+      setIsConsuming(false);
+    }
+  }, [consumeGrams, consumeNote, spool, updateWeight, isConsuming]);
+
+  const loadPrinterJobs = useCallback(async () => {
+    setShowImportModal(true);
+    setLoadingJobs(true);
+    setPrinterJobs([]);
+    try {
+      const pairs = await AsyncStorage.multiGet(["printer_api_url", "printer_api_adapter"]);
+      const url = pairs[0][1] ?? "";
+      const adapterName = pairs[1][1] ?? "Moonraker";
+      if (!url) return;
+      const adapter = PrinterApiService.getAdapter(adapterName);
+      if (!adapter) return;
+      const jobs = await adapter.getRecentJobs(url, 5);
+      setPrinterJobs(jobs.filter((j) => j.status === "completed"));
+    } catch {
+      // keine Verbindung
+    } finally {
+      setLoadingJobs(false);
+    }
+  }, []);
 
   const s = makeStyles(colors, isDark);
   const bottomInset = insets.bottom + (Platform.OS === "web" ? 34 : 0);
@@ -266,6 +334,104 @@ export default function SpoolDetailScreen() {
         </View>
       </GlassCard>
 
+      {/* ── Druck abrechnen ── */}
+      <Text style={[s.cardTitle, { color: colors.textSecondary, marginBottom: 8, marginTop: 4, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "Inter_600SemiBold" }]}>DRUCK ABRECHNEN</Text>
+      <GlassCard style={s.glassCard}>
+        <View style={s.cardInner}>
+          <TextInput
+            style={[s.consumeInput, { backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)", color: colors.text, borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)" }]}
+            value={consumeGrams}
+            onChangeText={(v) => { setConsumeGrams(v); setConsumeError(null); }}
+            placeholder="Verbrauch in Gramm"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="decimal-pad"
+          />
+          {printerProfiles.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={[s.printerChip, consumePrinter === null && { backgroundColor: colors.accent }]}
+                  onPress={() => setConsumePrinter(null)}
+                >
+                  <Text style={{ color: consumePrinter === null ? "#fff" : colors.textSecondary, fontSize: 12 }}>Kein Drucker</Text>
+                </Pressable>
+                {printerProfiles.map((p) => (
+                  <Pressable
+                    key={p.localId}
+                    style={[s.printerChip, consumePrinter === p.localId && { backgroundColor: colors.accent }]}
+                    onPress={() => setConsumePrinter(p.localId)}
+                  >
+                    <Text style={{ color: consumePrinter === p.localId ? "#fff" : colors.textSecondary, fontSize: 12 }}>{p.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+          {consumeError && <Text style={{ color: colors.error, fontSize: 12, marginBottom: 8 }}>{consumeError}</Text>}
+          <Pressable
+            style={[s.consumeBtn, { backgroundColor: isConsuming ? colors.textTertiary : colors.accent }]}
+            onPress={handleConsume}
+            disabled={isConsuming}
+          >
+            {isConsuming
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={{ color: "#fff", fontFamily: fontWeight.semibold, fontSize: 14 }}>Abrechnen</Text>
+            }
+          </Pressable>
+          <Pressable
+            style={[s.importBtn, { borderColor: colors.accent }]}
+            onPress={loadPrinterJobs}
+          >
+            <Ionicons name="cloud-download-outline" size={14} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontFamily: fontWeight.medium, fontSize: 13, marginLeft: 6 }}>
+              Vom Drucker importieren
+            </Text>
+          </Pressable>
+          {spool?.filament?.paid_price != null && spool.filament.weight != null && parseFloat(consumeGrams) > 0 && (
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8 }}>
+              ~{((parseFloat(consumeGrams) / spool.filament.weight) * spool.filament.paid_price).toFixed(2)} € für diesen Druck
+            </Text>
+          )}
+          {spool?.filament?.paid_price == null && (
+            <Pressable onPress={() => router.push({ pathname: "/edit-filament", params: { localId: spool?._filamentLocalId } })}>
+              <Text style={{ color: colors.accent, fontSize: 12, marginTop: 6 }}>Preis hinterlegen →</Text>
+            </Pressable>
+          )}
+        </View>
+      </GlassCard>
+
+      {/* ── Verbrauchshistorie ── */}
+      {usageEvents.length > 0 && (
+        <>
+          <Text style={[s.cardTitle, { color: colors.textSecondary, marginBottom: 8, marginTop: 4, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", fontFamily: "Inter_600SemiBold" }]}>VERBRAUCH</Text>
+          <GlassCard style={s.glassCard}>
+            <View style={s.cardInner}>
+              {usageEvents.slice(-5).reverse().map((ev) => (
+                <View key={ev.id} style={s.eventRow}>
+                  <Ionicons
+                    name={ev.type === "consume" ? "flash-outline" : "swap-horizontal-outline"}
+                    size={14}
+                    color={colors.accent}
+                  />
+                  <Text style={[s.eventDate, { color: colors.textTertiary }]}>
+                    {new Date(ev.occurredAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}
+                  </Text>
+                  <Text style={[s.eventGrams, { color: colors.text }]}>
+                    {ev.type === "consume" ? `-${ev.grams}g` : `=${ev.grams}g`}
+                  </Text>
+                  {ev.note && <Text style={[s.eventNote, { color: colors.textSecondary }]}>{ev.note}</Text>}
+                </View>
+              ))}
+              {usageEvents.length > 5 && (
+                <Text style={[s.eventMore, { color: colors.accent }]}>
+                  + {usageEvents.length - 5} weitere Einträge
+                </Text>
+              )}
+            </View>
+          </GlassCard>
+        </>
+      )}
+
       {spool.filament && (
         <GlassCard style={s.glassCard}>
           <View style={s.cardInner}>
@@ -343,6 +509,59 @@ export default function SpoolDetailScreen() {
         </View>
       </GlassCard>
     </ScrollView>
+
+    <Modal
+      visible={showImportModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowImportModal(false)}
+    >
+      <Pressable style={s.modalOverlay} onPress={() => setShowImportModal(false)}>
+        <View style={[s.modalSheet, { backgroundColor: colors.surface }]}>
+          <Text style={[s.modalTitle, { color: colors.text }]}>Letzte Druckjobs</Text>
+          {loadingJobs ? (
+            <ActivityIndicator style={{ marginVertical: 20 }} color={colors.accent} />
+          ) : printerJobs.length === 0 ? (
+            <Text style={{ color: colors.textSecondary, textAlign: "center", marginVertical: 16 }}>
+              Keine Jobs gefunden. Drucker-URL in den Einstellungen prüfen.
+            </Text>
+          ) : (
+            printerJobs.map((job) => {
+              const DENSITY: Record<string, number> = { PLA: 1.24, PETG: 1.27, TPU: 1.04, ABS: 1.05 };
+              const weightG = job.filamentWeightG !== null
+                ? job.filamentWeightG
+                : (job.filamentUsedMm * Math.PI * Math.pow(1.75 / 2, 2) *
+                    (DENSITY[(job.filamentType ?? "").toUpperCase()] ?? 1.24)) / 1000;
+              const date = job.endTime
+                ? new Date(job.endTime).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })
+                : "?";
+              return (
+                <Pressable
+                  key={job.jobId}
+                  style={[s.jobRow, { borderBottomColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }]}
+                  onPress={() => { setConsumeGrams(weightG.toFixed(1)); setShowImportModal(false); }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{ color: colors.text, fontSize: 13, fontFamily: fontWeight.medium }}
+                      numberOfLines={1}
+                    >
+                      {job.filename.replace(/\.gcode$/i, "")}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                      {job.filamentType ?? "?"} · {date}
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.accent, fontFamily: fontWeight.semibold, fontSize: 14 }}>
+                    {weightG.toFixed(1)}g
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+        </View>
+      </Pressable>
+    </Modal>
     </LinearGradient>
   );
 }
@@ -599,6 +818,68 @@ function makeStyles(colors: typeof Colors.dark, isDark: boolean) {
       marginTop: 8,
       fontSize: 13,
       fontFamily: "Inter_400Regular",
+    },
+    consumeInput: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 14,
+      marginBottom: 10,
+    },
+    consumeBtn: {
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: "center",
+    },
+    printerChip: {
+      borderRadius: 8,
+      paddingVertical: 5,
+      paddingHorizontal: 12,
+      backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+    },
+    eventRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 5,
+    },
+    eventDate: { fontSize: 12, fontFamily: "Inter_400Regular", width: 60 },
+    eventGrams: { fontSize: 13, fontFamily: "Inter_600SemiBold", width: 55 },
+    eventNote: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular" },
+    eventMore: { fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center", marginTop: 6 },
+    importBtn: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingVertical: 10,
+      marginTop: 8,
+      gap: 4,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "flex-end" as const,
+    },
+    modalSheet: {
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 20,
+      paddingBottom: 44,
+    },
+    modalTitle: {
+      fontSize: 16,
+      fontFamily: "Inter_600SemiBold",
+      marginBottom: 16,
+    },
+    jobRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      gap: 12,
     },
   });
 }

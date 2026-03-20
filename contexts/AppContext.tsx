@@ -44,6 +44,9 @@ import {
 } from "@/src/core/application/SpoolListUseCase";
 import type { UpdateFilamentPatch, UpdateManufacturerPatch, UpdateSpoolPatch } from "@/src/core/ports";
 import { normalizeColor } from "@/src/core/application/filament/ColorNormalizer";
+import type { PrinterProfile } from "@/src/domain/models";
+import { PrinterRepository } from "@/src/data/repositories/PrinterRepository";
+import type { PrinterProfileData } from "@/src/data/repositories/PrinterRepository";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
 import {
@@ -206,6 +209,11 @@ interface AppContextValue {
   updateFilament: (localId: string, patch: UpdateFilamentPatch) => Promise<DomainFilament | null>;
   updateManufacturer: (localId: string, patch: UpdateManufacturerPatch) => Promise<Manufacturer | null>;
   updateSpool: (localId: string, patch: UpdateSpoolPatch) => Promise<boolean>;
+  printerProfiles: PrinterProfile[];
+  loadPrinterProfiles: () => Promise<void>;
+  createPrinterProfile: (data: PrinterProfileData) => Promise<PrinterProfile | null>;
+  updatePrinterProfile: (localId: string, data: PrinterProfileData) => Promise<void>;
+  deletePrinterProfile: (localId: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -234,6 +242,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [openConflictCount, setOpenConflictCount] = useState(0);
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [filaments, setFilaments] = useState<DomainFilament[]>([]);
+  const [printerProfilesList, setPrinterProfilesList] = useState<PrinterProfile[]>([]);
 
   // Phase 5: pagination state
   const [spoolPage, setSpoolPage] = useState(0);
@@ -286,6 +295,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setManufacturers(mfrs);
           setFilaments(fils);
           setOpenConflictCount(conflictCount);
+
+          const printers = await PrinterRepository.getAll();
+          setPrinterProfilesList(printers);
 
           if (onboarded) {
             // Phase 5: load first page instead of all spools
@@ -559,6 +571,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setDefaultWeightMode = useCallback((m: string) => {
     setDefaultWeightModeState(m);
     persistWeightMode(m);
+  }, []);
+
+  const loadPrinterProfiles = useCallback(async () => {
+    if (!isPersistenceEnabled) return;
+    const printers = await PrinterRepository.getAll();
+    setPrinterProfilesList(printers);
+  }, []);
+
+  const createPrinterProfile = useCallback(async (data: PrinterProfileData): Promise<PrinterProfile | null> => {
+    if (!isPersistenceEnabled) return null;
+    try {
+      const profile = await PrinterRepository.insert(data);
+      setPrinterProfilesList((prev) => [...prev, profile].sort((a, b) => a.name.localeCompare(b.name)));
+      return profile;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const updatePrinterProfile = useCallback(async (localId: string, data: PrinterProfileData): Promise<void> => {
+    if (!isPersistenceEnabled) return;
+    await PrinterRepository.update(localId, data);
+    await loadPrinterProfiles();
+  }, [loadPrinterProfiles]);
+
+  const deletePrinterProfile = useCallback(async (localId: string): Promise<void> => {
+    if (!isPersistenceEnabled) return;
+    await PrinterRepository.remove(localId);
+    setPrinterProfilesList((prev) => prev.filter((p) => p.localId !== localId));
   }, []);
 
   const reloadCatalog = useCallback(async () => {
@@ -902,6 +943,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateFilament,
       updateManufacturer,
       updateSpool,
+      printerProfiles: printerProfilesList,
+      loadPrinterProfiles,
+      createPrinterProfile,
+      updatePrinterProfile,
+      deletePrinterProfile,
     }),
     [
       serverUrl,
@@ -951,6 +997,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateFilament,
       updateManufacturer,
       updateSpool,
+      printerProfilesList,
+      loadPrinterProfiles,
+      createPrinterProfile,
+      updatePrinterProfile,
+      deletePrinterProfile,
     ]
   );
 

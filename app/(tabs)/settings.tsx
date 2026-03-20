@@ -13,8 +13,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
 import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { PrinterApiService } from "@/src/adapters/printer/PrinterApiService";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
 import { fontSize, fontWeight } from "@/constants/ui";
 import {
@@ -69,6 +72,7 @@ export default function SettingsScreen() {
     syncPending,
     language,
     setLanguage,
+    printerProfiles,
   } = useApp();
 
   const [urlInput, setUrlInput] = useState(serverUrl);
@@ -76,9 +80,20 @@ export default function SettingsScreen() {
   const [testMessage, setTestMessage] = useState("");
   const [serverVersion, setServerVersion] = useState<string | null>(null);
   const [nfcInfo, setNfcInfo] = useState<NfcAvailability | null>(null);
+  const [printerApiUrl, setPrinterApiUrl] = useState("");
+  const [printerApiAdapter, setPrinterApiAdapter] = useState("Moonraker");
+  const [printerApiTestState, setPrinterApiTestState] = useState<TestState>("idle");
+  const [printerApiTestMessage, setPrinterApiTestMessage] = useState("");
 
   useEffect(() => {
     checkNfcAvailability().then(setNfcInfo);
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.multiGet(["printer_api_url", "printer_api_adapter"]).then((pairs) => {
+      setPrinterApiUrl(pairs[0][1] ?? "");
+      setPrinterApiAdapter(pairs[1][1] ?? "Moonraker");
+    });
   }, []);
 
   const topInset = insets.top + (Platform.OS === "web" ? 67 : 0);
@@ -136,6 +151,35 @@ export default function SettingsScreen() {
     }
     await refreshSpools();
   }, [refreshSpools, serverUrl, t]);
+
+  const testPrinterConnection = useCallback(async () => {
+    const trimmed = printerApiUrl.trim();
+    if (!trimmed) return;
+    setPrinterApiTestState("testing");
+    setPrinterApiTestMessage("");
+    const adapter = PrinterApiService.getAdapter(printerApiAdapter);
+    if (!adapter) {
+      setPrinterApiTestState("error");
+      setPrinterApiTestMessage("Unbekannter Adapter");
+      return;
+    }
+    try {
+      const ok = await adapter.testConnection(trimmed);
+      setPrinterApiTestState(ok ? "ok" : "error");
+      setPrinterApiTestMessage(ok ? "Verbunden" : "Keine Verbindung");
+    } catch (err: unknown) {
+      setPrinterApiTestState("error");
+      setPrinterApiTestMessage(err instanceof Error ? err.message : "Fehler");
+    }
+  }, [printerApiUrl, printerApiAdapter]);
+
+  const savePrinterApiSettings = useCallback(async () => {
+    await AsyncStorage.multiSet([
+      ["printer_api_url", printerApiUrl.trim()],
+      ["printer_api_adapter", printerApiAdapter],
+    ]);
+    Alert.alert("OK", "Drucker-API gespeichert");
+  }, [printerApiUrl, printerApiAdapter]);
 
   const statusDot = {
     connected: colors.success,
@@ -337,6 +381,82 @@ export default function SettingsScreen() {
               </Text>
             </Pressable>
           ))}
+        </View>
+      </View>
+
+      {/* ── Drucker ── */}
+      <Text style={s.sectionHeader}>Drucker</Text>
+      <View style={[s.card, { backgroundColor: colors.surface }]}>
+        <Pressable
+          style={s.menuRow}
+          onPress={() => router.push("/printer-profiles")}
+        >
+          <Ionicons name="print-outline" size={18} color={colors.accent} />
+          <Text style={[s.menuLabel, { color: colors.text }]}>Druckerprofile</Text>
+          {printerProfiles.length > 0 && (
+            <View style={[s.badge, { backgroundColor: colors.accent }]}>
+              <Text style={s.badgeLabel}>{printerProfiles.length}</Text>
+            </View>
+          )}
+          <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+        </Pressable>
+      </View>
+
+      {/* ── Drucker-API ── */}
+      <Text style={s.sectionHeader}>Drucker-API</Text>
+      <View style={[s.card, { backgroundColor: colors.surface }]}>
+        <Text style={[s.label, { color: colors.textSecondary }]}>Adapter</Text>
+        <View style={s.segmented}>
+          {PrinterApiService.getAllAdapters().map((a) => (
+            <Pressable
+              key={a.name}
+              style={[
+                s.segment,
+                { borderColor: colors.surfaceBorder },
+                printerApiAdapter === a.name && { backgroundColor: colors.accent, borderColor: colors.accent },
+              ]}
+              onPress={() => setPrinterApiAdapter(a.name)}
+            >
+              <Text style={[s.segmentLabel, { color: printerApiAdapter === a.name ? "#fff" : colors.text }]}>
+                {a.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={[s.label, { color: colors.textSecondary }]}>Drucker-URL</Text>
+        <TextInput
+          style={[s.input, { backgroundColor: colors.surfaceElevated, color: colors.text, borderColor: colors.surfaceBorder }]}
+          value={printerApiUrl}
+          onChangeText={(v) => { setPrinterApiUrl(v); setPrinterApiTestState("idle"); setPrinterApiTestMessage(""); }}
+          placeholder="http://192.168.1.100"
+          placeholderTextColor={colors.textTertiary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+        {printerApiTestMessage !== "" && (
+          <Text style={[s.testMsg, { color: printerApiTestState === "ok" ? colors.success : colors.error }]}>
+            {printerApiTestMessage}
+          </Text>
+        )}
+        <View style={s.btnRow}>
+          <Pressable
+            style={[s.btn, s.btnOutline, { borderColor: colors.accent }, printerApiTestState === "testing" && s.btnDisabled]}
+            onPress={testPrinterConnection}
+            disabled={printerApiTestState === "testing"}
+          >
+            {printerApiTestState === "testing" ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Text style={[s.btnLabel, { color: colors.accent }]}>Testen</Text>
+            )}
+          </Pressable>
+          <Pressable
+            style={[s.btn, s.btnFill, { backgroundColor: colors.accent }]}
+            onPress={savePrinterApiSettings}
+          >
+            <Text style={[s.btnLabel, { color: "#fff" }]}>Speichern</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -550,6 +670,30 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
     divider: {
       height: StyleSheet.hairlineWidth,
       marginVertical: 2,
+    },
+    menuRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 4,
+    },
+    menuLabel: {
+      flex: 1,
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.medium,
+    },
+    badge: {
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 5,
+    },
+    badgeLabel: {
+      fontSize: 11,
+      fontFamily: fontWeight.semibold,
+      color: "#fff",
     },
   });
 }
