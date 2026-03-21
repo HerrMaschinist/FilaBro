@@ -91,7 +91,7 @@ export default function SpoolDetailScreen() {
 
   const colorHex = getColorHex(spool ?? ({} as Spool));
   const barColor = percentColor(percent, colors);
-  const favorite = spool ? isFavorite(spool.id) : false;
+  const favorite = spool?._localId ? isFavorite(spool._localId) : false;
 
   const saveWeight = useCallback(async () => {
     if (!spool) return;
@@ -237,7 +237,7 @@ export default function SpoolDetailScreen() {
           </Text>
         )}
         <View style={s.headerActions}>
-          <Pressable style={s.actionBtn} onPress={() => toggleFavorite(spool.id)} hitSlop={12}>
+          <Pressable style={s.actionBtn} onPress={() => spool._localId && toggleFavorite(spool._localId)} hitSlop={12}>
             <Ionicons name={favorite ? "heart" : "heart-outline"} size={24} color={favorite ? colors.error : colors.textTertiary} />
           </Pressable>
           {spool._localId && (

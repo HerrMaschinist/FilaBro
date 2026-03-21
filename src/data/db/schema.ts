@@ -205,3 +205,29 @@ export type DbUsageEvent = typeof usageEvents.$inferSelect;
 export type InsertUsageEvent = typeof usageEvents.$inferInsert;
 export type DbSpoolStats = typeof spoolStats.$inferSelect;
 export type InsertSpoolStats = typeof spoolStats.$inferInsert;
+
+/**
+ * Identity layer: persists scan code to spool mappings.
+ */
+export const scanAliases = sqliteTable(
+  "scan_aliases",
+  {
+    id: text("id").primaryKey(),
+    rawCode: text("raw_code").notNull(),
+    spoolLocalId: text("spool_local_id").notNull(),
+    codeType: text("code_type").notNull(),
+    confidence: integer("confidence").notNull(),
+    confirmedByUser: integer("confirmed_by_user").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+  },
+  (t) => ({
+    rawCodeIdx: index("idx_scan_aliases_raw_code").on(t.rawCode),
+    spoolIdx: index("idx_scan_aliases_spool_local_id").on(t.spoolLocalId),
+    codeTypeIdx: index("idx_scan_aliases_code_type").on(t.codeType),
+  })
+);
+
+export type DbScanAlias = typeof scanAliases.$inferSelect;
+export type InsertScanAlias = typeof scanAliases.$inferInsert;
+

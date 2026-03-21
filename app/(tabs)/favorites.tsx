@@ -23,7 +23,7 @@ export default function FavoritesScreen() {
   const { spools, favorites, toggleFavorite, isFavorite, pendingUpdates } = useApp();
 
   const favoriteSpools = useMemo<Spool[]>(
-    () => spools.filter((s) => favorites.includes(s.id)),
+    () => spools.filter((s) => s._localId && favorites.includes(s._localId)),
     [spools, favorites]
   );
 
@@ -62,11 +62,11 @@ export default function FavoritesScreen() {
             <SpoolCard
               spool={item}
               index={index}
-              isFavorite={isFavorite(item.id)}
+              isFavorite={item._localId ? isFavorite(item._localId) : false}
               onPress={() =>
                 router.push({ pathname: "/spool/[id]", params: { id: item._localId ?? String(item.id) } })
               }
-              onToggleFavorite={() => toggleFavorite(item.id)}
+              onToggleFavorite={() => item._localId && toggleFavorite(item._localId)}
               isPending={pendingIds.has(item.id)}
             />
           )}

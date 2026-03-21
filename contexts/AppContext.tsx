@@ -166,9 +166,9 @@ interface AppContextValue {
   findSpoolsByQrCode: (qr: string) => Promise<Spool[]>;
   findSpoolsByNfcTagId: (tagId: string) => Promise<Spool[]>;
 
-  favorites: number[];
-  toggleFavorite: (id: number) => void;
-  isFavorite: (id: number) => boolean;
+  favorites: string[];
+  toggleFavorite: (localId: string) => void;
+  isFavorite: (localId: string) => boolean;
 
   pendingUpdates: PendingUpdate[];
   updateWeight: (spoolId: number, weight: number) => Promise<void>;
@@ -457,30 +457,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const favorites = useMemo(
-    () => spools.filter((s) => s._isFavorite).map((s) => s.id),
+    () => spools.filter((s) => s._isFavorite && s._localId).map((s) => s._localId!),
     [spools]
   );
 
   const isFavorite = useCallback(
-    (id: number) => !!spools.find((s) => s.id === id)?._isFavorite,
+    (localId: string) => !!spools.find((s) => s._localId === localId)?._isFavorite,
     [spools]
   );
 
   const toggleFavorite = useCallback(
-    (id: number) => {
-      const spool = spools.find((s) => s.id === id);
+    (localId: string) => {
+      const spool = spools.find((s) => s._localId === localId);
       if (!spool) return;
 
       const next = !spool._isFavorite;
       setSpools((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, _isFavorite: next } : s))
+        prev.map((s) => (s._localId === localId ? { ...s, _isFavorite: next } : s))
       );
 
-      if (isPersistenceEnabled && spool._localId) {
-        SpoolUseCase.setFavorite(spool._localId, next).catch(() => {
+      if (isPersistenceEnabled) {
+        SpoolUseCase.setFavorite(localId, next).catch(() => {
           setSpools((prev) =>
             prev.map((s) =>
-              s.id === id ? { ...s, _isFavorite: !next } : s
+              s._localId === localId ? { ...s, _isFavorite: !next } : s
             )
           );
         });

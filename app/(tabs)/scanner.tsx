@@ -35,6 +35,8 @@ import { FilabaseRepository } from "@/src/data/repositories/FilabaseRepository";
 import { CatalogRepository, CatalogGtinResult } from "@/src/data/repositories/CatalogRepository";
 import { isFilabaseReady } from "@/src/data/db/filabase_client";
 import { isCatalogReady } from "@/src/data/db/catalog_client";
+import { identityResolver } from "@/src/core/identity/resolver";
+import { ResolveResult } from "@/src/core/identity/types";
 
 type ScanMode = "qr" | "nfc";
 type NfcScanState = "idle" | "checking" | "scanning" | "success" | "error";
@@ -69,6 +71,9 @@ export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const scanLockRef = React.useRef(false);
+  const [resolveResult, setResolveResult] = useState<ResolveResult | null>(null);
+  const [showResolveSheet, setShowResolveSheet] = useState(false);
+  const [learnToast, setLearnToast] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
 
   const [nfcAvailability, setNfcAvailability] = useState<NfcAvailability | null>(null);
@@ -166,6 +171,12 @@ export default function ScannerScreen() {
     });
     if (nfcSubMode === "read") setWriteLocalId(null);
   }, [nfcSubMode]);
+
+  useEffect(() => {
+    if (!learnToast) return;
+    const t = setTimeout(() => setLearnToast(false), 2000);
+    return () => clearTimeout(t);
+  }, [learnToast]);
 
   // Pill geometry
   const pillWidth = Math.max(0, (switcherWidth - 8) / 2);
@@ -283,6 +294,47 @@ export default function ScannerScreen() {
       setScanned(true);
       setLastResult(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // ── Identity Resolver ──────────────────────────────────────────────────
+      const spoolIdentities = spools
+        .map(s => ({
+          localId: s._localId ?? "",
+          qrCode: s._qrCode ?? undefined,
+          nfcTagId: s._nfcTagId ?? undefined,
+          material: (s.filament as any)?.material ?? undefined,
+          weight: (s.filament as any)?.weight ?? undefined,
+          displayName: (s as any)._displayName ?? (s.filament as any)?.name ?? undefined,
+        }))
+        .filter(s => s.localId !== "");
+
+      const catalogLookupFn = (gtin: string): import("@/src/core/identity/types").CatalogHint | null => {
+        if (isFilabaseReady()) {
+          const fb = FilabaseRepository.findByGtin(gtin);
+          if (fb) return { material: fb.material ?? undefined, weightG: (fb as any).netFilamentWeightG ?? undefined, brandName: (fb as any).brandName ?? undefined };
+        }
+        if (isCatalogReady()) {
+          const ofd = CatalogRepository.searchByGtin(gtin);
+          if (ofd) return { material: (ofd as any).filament?.material ?? undefined, weightG: (ofd as any).size?.filamentWeight ?? undefined, brandName: (ofd as any).brand?.name ?? undefined };
+        }
+        return null;
+      };
+
+      const codeType = isLikelyGtin(data) ? "barcode" : "qr";
+      const result = identityResolver.resolve(data.trim(), codeType, spoolIdentities, catalogLookupFn);
+
+      if (result.status === "exact") {
+        const spool = spools.find(s => s._localId === result.matchedSpoolId);
+        if (spool) {
+          router.push({ pathname: "/spool/[id]", params: { id: spool._localId ?? String(spool.id) } });
+          return;
+        }
+      }
+      if (result.status === "conflict" || result.status === "candidate") {
+        setResolveResult(result);
+        setShowResolveSheet(true);
+        return;
+      }
+      // status === "unknown" → weiter mit GTIN/Spoolman-Logik
 
       // GTIN-Lookup gegen Katalog-DBs
       if (isLikelyGtin(data)) {
@@ -945,6 +997,61 @@ export default function ScannerScreen() {
 
       {NotFoundSheet}
       {Toast}
+      {resolveResult && showResolveSheet && (
+        <ResolveSheet
+          result={resolveResult}
+          spools={spools}
+          onConfirm={(spoolLocalId) => {
+            identityResolver.learn(
+              resolveResult.rawCode,
+              resolveResult.codeType,
+              spoolLocalId,
+              95,
+              true
+            );
+            setShowResolveSheet(false);
+            setResolveResult(null);
+            scanLockRef.current = false;
+            setScanned(false);
+            setLearnToast(true);
+            router.push({ pathname: "/spool/[id]", params: { id: spoolLocalId } });
+          }}
+          onNewSpool={() => {
+            setShowResolveSheet(false);
+            setResolveResult(null);
+            scanLockRef.current = false;
+            setScanned(false);
+            router.push({ pathname: "/add-spool", params: {} });
+          }}
+          onDismiss={() => {
+            setShowResolveSheet(false);
+            setResolveResult(null);
+            scanLockRef.current = false;
+            setScanned(false);
+          }}
+        />
+      )}
+      {learnToast && (
+        <View style={{
+          position: "absolute",
+          bottom: 100,
+          alignSelf: "center",
+          backgroundColor: colors.success,
+          borderRadius: 20,
+          paddingHorizontal: 20,
+          paddingVertical: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          shadowColor: "#000",
+          shadowOpacity: 0.2,
+          shadowRadius: 8,
+          elevation: 6,
+        }}>
+          <Ionicons name="checkmark-circle" size={18} color="#fff" />
+          <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Zuordnung gespeichert</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -1361,4 +1468,131 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       flex: 1,
     },
   });
+}
+
+function ResolveSheet({
+  result,
+  spools,
+  onConfirm,
+  onNewSpool,
+  onDismiss,
+}: {
+  result: ResolveResult;
+  spools: any[];
+  onConfirm: (spoolLocalId: string) => void;
+  onNewSpool?: () => void;
+  onDismiss: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onDismiss}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
+        <View style={{
+          backgroundColor: colors.surface,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          padding: 20,
+          paddingBottom: insets.bottom + 20,
+          maxHeight: "80%",
+        }}>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.surfaceBorder, alignSelf: "center", marginBottom: 16 }} />
+
+            {result.status === "conflict" && (
+              <View style={{ backgroundColor: `${colors.error}18`, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: `${colors.error}30` }}>
+                <Text style={{ fontSize: 13, color: colors.error, fontFamily: "Inter_600SemiBold" }}>
+                  ⚠️ Konflikt: Dieser Code ist mehreren Spulen zugeordnet. Bitte wähle die richtige aus.
+                </Text>
+              </View>
+            )}
+
+            <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: colors.text, marginBottom: 4 }}>
+              {result.status === "conflict" ? "Konflikt erkannt" : "Mögliche Spulen"}
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
+              {result.reasons[0] ?? "Wähle die passende Spule"}
+            </Text>
+
+            {result.candidates.map(candidate => {
+              const spool = spools.find(s => s._localId === candidate.spoolLocalId);
+              if (!spool) return null;
+              const name = (spool as any)._displayName || (spool as any).filament?.name || `Spule #${spool.id}`;
+              const score = candidate.confidence.score;
+              const scoreColor = score >= 80 ? colors.success : score >= 50 ? colors.warning : colors.error;
+              return (
+                <Pressable
+                  key={candidate.spoolLocalId}
+                  onPress={() => onConfirm(candidate.spoolLocalId)}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    padding: 14,
+                    borderRadius: 14,
+                    backgroundColor: pressed ? colors.surfaceElevated : colors.surfaceElevated,
+                    marginBottom: 8,
+                    gap: 12,
+                    borderWidth: 1,
+                    borderColor: colors.surfaceBorder,
+                    opacity: pressed ? 0.8 : 1,
+                  })}
+                >
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.text }}>{name}</Text>
+                    {candidate.reasons.map((r, i) => (
+                      <View key={i} style={{
+                        alignSelf: "flex-start",
+                        backgroundColor: `${colors.accent}18`,
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        marginTop: 2,
+                      }}>
+                        <Text style={{ fontSize: 11, color: colors.accent, fontFamily: "Inter_500Medium" }}>{r}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={{
+                    backgroundColor: `${scoreColor}20`,
+                    borderRadius: 10,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    alignItems: "center",
+                  }}>
+                    <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: scoreColor }}>{score}%</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+
+            {onNewSpool && (
+              <Pressable
+                onPress={onNewSpool}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 14,
+                  borderRadius: 14,
+                  borderWidth: 1.5,
+                  borderColor: colors.accent,
+                  marginBottom: 8,
+                  gap: 8,
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                <Text style={{ color: colors.accent, fontSize: 15, fontFamily: "Inter_600SemiBold" }}>Neue Spule anlegen</Text>
+              </Pressable>
+            )}
+
+            <Pressable onPress={onDismiss} style={{ padding: 14, alignItems: "center" }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 15, fontFamily: "Inter_500Medium" }}>Nicht zuordnen</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 }

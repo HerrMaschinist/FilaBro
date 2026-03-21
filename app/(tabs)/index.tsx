@@ -99,7 +99,7 @@ export default function SpoolsScreen() {
           String(s.id).includes(q)
       );
     }
-    if (filterFavOnly) data = data.filter((s) => favorites.includes(s.id));
+    if (filterFavOnly) data = data.filter((s) => s._localId && favorites.includes(s._localId));
     if (filterMaterial)
       data = data.filter((s) => s.filament?.material === filterMaterial);
     if (filterMinWeight > 0)
@@ -147,14 +147,14 @@ export default function SpoolsScreen() {
       <SpoolCard
         spool={item}
         index={index}
-        isFavorite={isFavorite(item.id)}
+        isFavorite={item._localId ? isFavorite(item._localId) : false}
         onPress={() =>
           router.push({
             pathname: "/spool/[id]",
             params: { id: item._localId ?? String(item.id) },
           })
         }
-        onToggleFavorite={() => toggleFavorite(item.id)}
+        onToggleFavorite={() => item._localId && toggleFavorite(item._localId)}
         isPending={pendingIds.has(item.id)}
       />
     ),

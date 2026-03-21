@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import * as schema from "./schema";
 
 const DB_NAME = "filabro.db";
-const CURRENT_SCHEMA_VERSION = 8;
+const CURRENT_SCHEMA_VERSION = 9;
 
 /**
  * Versioned SQL migrations.
@@ -183,6 +183,25 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
       `UPDATE filaments SET color_name_raw = color_name WHERE color_name IS NOT NULL AND color_name_raw IS NULL`,
       // Seed (Legacy integration): copy former Spoolman color_hex -> color_hex_norm, normalizing to #RRGGBB format
       `UPDATE filaments SET color_hex_norm = CASE WHEN SUBSTR(color_hex,1,1)='#' THEN color_hex ELSE '#' || color_hex END WHERE color_hex IS NOT NULL AND color_hex_norm IS NULL`,
+    ],
+  },
+  {
+    version: 9,
+    statements: [
+      // Identity Layer: scan_aliases
+      `CREATE TABLE IF NOT EXISTS scan_aliases (
+        id TEXT PRIMARY KEY,
+        raw_code TEXT NOT NULL,
+        spool_local_id TEXT NOT NULL,
+        code_type TEXT NOT NULL,
+        confidence INTEGER NOT NULL,
+        confirmed_by_user INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_scan_aliases_raw_code ON scan_aliases(raw_code)`,
+      `CREATE INDEX IF NOT EXISTS idx_scan_aliases_spool_local_id ON scan_aliases(spool_local_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_scan_aliases_code_type ON scan_aliases(code_type)`,
     ],
   },
 ];
