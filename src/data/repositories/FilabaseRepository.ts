@@ -22,6 +22,7 @@ export interface FilabaseEntry {
 export const FilabaseRepository = {
   findByGtin(gtin: string): FilabaseEntry | null {
     const db = getFilabaseDb();
+    if (!db) return null;
     const rows = db.getAllSync<any>(
       `SELECT * FROM filabase_entries WHERE gtin = ? LIMIT 1`,
       [gtin]
@@ -32,6 +33,7 @@ export const FilabaseRepository = {
 
   searchByName(query: string): FilabaseEntry[] {
     const db = getFilabaseDb();
+    if (!db) return [];
     const like = `%${query}%`;
     const rows = db.getAllSync<any>(
       `SELECT * FROM filabase_entries
@@ -45,6 +47,7 @@ export const FilabaseRepository = {
 
   findByColor(colorHex: string): FilabaseEntry[] {
     const db = getFilabaseDb();
+    if (!db) return [];
     const rows = db.getAllSync<any>(
       `SELECT * FROM filabase_entries WHERE color_hex = ? LIMIT 20`,
       [colorHex]

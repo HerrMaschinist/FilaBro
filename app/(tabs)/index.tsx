@@ -151,7 +151,7 @@ export default function SpoolsScreen() {
         onPress={() =>
           router.push({
             pathname: "/spool/[id]",
-            params: { id: String(item.id) },
+            params: { id: item._localId ?? String(item.id) },
           })
         }
         onToggleFavorite={() => toggleFavorite(item.id)}

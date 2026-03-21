@@ -33,6 +33,7 @@ export async function initCatalogDatabase(): Promise<void> {
         needsCopy = true;
         await FileSystem.deleteAsync(dbPath, { idempotent: true });
       }
+      testDb.closeSync();
     } catch {
       needsCopy = true;
     }
@@ -50,8 +51,7 @@ export async function initCatalogDatabase(): Promise<void> {
   _catalogDb = SQLite.openDatabaseSync(CATALOG_DB_NAME);
 }
 
-export function getCatalogDb(): SQLite.SQLiteDatabase {
-  if (!_catalogDb) throw new Error("Catalog DB not initialized");
+export function getCatalogDb(): SQLite.SQLiteDatabase | null {
   return _catalogDb;
 }
 

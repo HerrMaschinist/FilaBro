@@ -64,7 +64,7 @@ export default function FavoritesScreen() {
               index={index}
               isFavorite={isFavorite(item.id)}
               onPress={() =>
-                router.push({ pathname: "/spool/[id]", params: { id: String(item.id) } })
+                router.push({ pathname: "/spool/[id]", params: { id: item._localId ?? String(item.id) } })
               }
               onToggleFavorite={() => toggleFavorite(item.id)}
               isPending={pendingIds.has(item.id)}

@@ -56,6 +56,7 @@ export interface CatalogGtinResult {
 export const CatalogRepository = {
   searchByColorHex(colorHex: string): CatalogSearchResult[] {
     const db = getCatalogDb();
+    if (!db) return [];
     const rows = db.getAllSync<any>(
       `SELECT
         v.id as v_id, v.filament_id, v.brand_id as v_brand_id,
@@ -76,6 +77,7 @@ export const CatalogRepository = {
 
   searchByName(query: string): CatalogSearchResult[] {
     const db = getCatalogDb();
+    if (!db) return [];
     const like = `%${query}%`;
     const rows = db.getAllSync<any>(
       `SELECT
@@ -98,6 +100,7 @@ export const CatalogRepository = {
 
   getBrands(): CatalogBrand[] {
     const db = getCatalogDb();
+    if (!db) return [];
     return db.getAllSync<CatalogBrand>(
       `SELECT id, name, website, origin FROM brands ORDER BY name`
     );
@@ -105,6 +108,7 @@ export const CatalogRepository = {
 
   searchByGtin(gtin: string): CatalogGtinResult | null {
     const db = getCatalogDb();
+    if (!db) return null;
     const rows = db.getAllSync<any>(
       `SELECT
         s.id as s_id, s.variant_id, s.filament_id as s_filament_id,

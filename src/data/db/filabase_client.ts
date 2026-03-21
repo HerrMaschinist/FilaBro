@@ -29,8 +29,7 @@ export async function initFilabaseDatabase(): Promise<void> {
   _filabaseDb = SQLite.openDatabaseSync(FILABASE_DB_NAME);
 }
 
-export function getFilabaseDb(): SQLite.SQLiteDatabase {
-  if (!_filabaseDb) throw new Error("FilaBase DB not initialized");
+export function getFilabaseDb(): SQLite.SQLiteDatabase | null {
   return _filabaseDb;
 }
 

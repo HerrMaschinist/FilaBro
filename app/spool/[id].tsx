@@ -55,8 +55,9 @@ export default function SpoolDetailScreen() {
     printerProfiles,
   } = useApp();
 
-  const remoteId = parseInt(id ?? "0", 10);
-  const spool = spools.find((s) => s.id === remoteId) ?? null;
+  const spool = spools.find((s) =>
+    s._localId === id || String(s.id) === id
+  ) ?? null;
 
   const [weightInput, setWeightInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
