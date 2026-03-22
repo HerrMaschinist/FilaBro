@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   Pressable,
   ScrollView,
@@ -17,7 +18,7 @@ import { usePro } from "@/src/contexts/ProContext";
 import { PurchaseService } from "@/src/services/PurchaseService";
 
 const FEATURES: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string }[] = [
-  { icon: "scan-outline", label: "Identity Resolver \u2014 KI-Spulenerkennung" },
+  { icon: "scan-outline", label: "Identity Resolver — KI-Spulenerkennung" },
   { icon: "wifi-outline", label: "NFC-Powerfunktionen" },
   { icon: "color-palette-outline", label: "Farberkennung per Kamera" },
   { icon: "trending-up-outline", label: "Verbrauchsprognose" },
@@ -33,6 +34,8 @@ export default function PaywallScreen() {
   const [loading, setLoading] = useState(false);
   const [offering, setOffering] = useState<PurchasesOffering | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoStatus, setPromoStatus] = useState<string | null>(null);
 
   useEffect(() => {
     PurchaseService.getOfferings().then((o) => setOffering(o));
@@ -45,11 +48,11 @@ export default function PaywallScreen() {
         p.identifier.toLowerCase().includes("lifetime")
     ) ?? null;
 
-  const priceString = lifetimePkg?.product.priceString ?? "25,00 \u20ac";
+  const priceString = lifetimePkg?.product.priceString ?? "25,00 €";
 
   const handlePurchase = async () => {
     if (!lifetimePkg) {
-      setError("Kein Angebot verf\u00fcgbar. Bitte versuche es sp\u00e4ter.");
+      setError("Kein Angebot verfügbar. Bitte versuche es später.");
       return;
     }
     setLoading(true);
@@ -87,6 +90,15 @@ export default function PaywallScreen() {
     }
   };
 
+  const handleRedeem = () => {
+    const code = promoCode.trim();
+    if (!code) return;
+    // Placeholder — Google Play Offer Redemption
+    console.log("Aktionscode:", code);
+    setPromoStatus("Code wird geprüft…");
+    setTimeout(() => setPromoStatus(null), 3000);
+  };
+
   const gradStart = isDark ? "#0B0F1A" : "#F0F4FA";
   const gradEnd = isDark ? "#0F1425" : "#E8EFF9";
 
@@ -101,7 +113,7 @@ export default function PaywallScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Schlie\u00dfen-Button */}
+          {/* Schließen-Button */}
           <Pressable
             onPress={() => router.back()}
             style={[s.closeBtn, { backgroundColor: colors.surfaceElevated }]}
@@ -122,7 +134,7 @@ export default function PaywallScreen() {
           {/* Titel */}
           <Text style={[s.title, { color: colors.text }]}>FilaBro Pro</Text>
           <Text style={[s.subtitle, { color: colors.textSecondary }]}>
-            Einmalig kaufen. F\u00fcr immer nutzen.
+            Einmalig kaufen. Für immer nutzen.
           </Text>
 
           {/* Feature-Liste */}
@@ -144,7 +156,7 @@ export default function PaywallScreen() {
             </View>
             <Text style={[s.price, { color: colors.text }]}>{priceString}</Text>
             <Text style={[s.priceSub, { color: colors.textTertiary }]}>
-              Einmaliger Kauf \u00b7 Kein Abo
+              Einmaliger Kauf · Kein Abo
             </Text>
           </View>
 
@@ -158,7 +170,7 @@ export default function PaywallScreen() {
             <View style={[s.proActiveBanner, { backgroundColor: `${colors.success}18`, borderColor: `${colors.success}44` }]}>
               <Ionicons name="checkmark-circle" size={22} color={colors.success} />
               <Text style={[s.proActiveLabel, { color: colors.success }]}>
-                Du bist bereits Pro \u2713
+                Du bist bereits Pro ✓
               </Text>
             </View>
           ) : (
@@ -192,12 +204,47 @@ export default function PaywallScreen() {
                   Kauf wiederherstellen
                 </Text>
               </Pressable>
+
+              {/* Aktionscode */}
+              <View style={s.promoRow}>
+                <TextInput
+                  style={[s.promoInput, {
+                    color: colors.text,
+                    backgroundColor: colors.surfaceElevated,
+                    borderColor: colors.surfaceBorder,
+                  }]}
+                  value={promoCode}
+                  onChangeText={setPromoCode}
+                  placeholder="Aktionscode eingeben"
+                  placeholderTextColor={colors.textTertiary}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+                <Pressable
+                  style={({ pressed }) => [
+                    s.redeemBtn,
+                    { borderColor: colors.surfaceBorder },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                  onPress={handleRedeem}
+                  disabled={!promoCode.trim()}
+                >
+                  <Text style={[s.redeemBtnLabel, { color: colors.textSecondary }]}>
+                    Einlösen
+                  </Text>
+                </Pressable>
+              </View>
+              {promoStatus && (
+                <Text style={[s.promoStatus, { color: colors.textTertiary }]}>
+                  {promoStatus}
+                </Text>
+              )}
             </>
           )}
 
-          {/* Fu\u00dfnote */}
+          {/* Fußnote */}
           <Text style={[s.footnote, { color: colors.textTertiary }]}>
-            Zahlung \u00fcber Google Play. Keine versteckten Kosten.
+            Zahlung über Google Play. Keine versteckten Kosten.
           </Text>
         </ScrollView>
       </LinearGradient>
@@ -333,6 +380,35 @@ const s = StyleSheet.create({
   restoreBtnLabel: {
     fontSize: 14,
     fontFamily: "Inter_400Regular",
+  },
+  promoRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  promoInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+  },
+  redeemBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  redeemBtnLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  promoStatus: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
   },
   footnote: {
     fontSize: 12,
