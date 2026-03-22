@@ -46,7 +46,8 @@
       "expo-camera",
       "expo-secure-store",
       "expo-asset",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      ["expo-notifications", { "icon": "./assets/images/icon.png", "color": "#3B82F6", "androidMode": "default" }]
     ],
     "assetBundlePatterns": [
       "assets/**/*"

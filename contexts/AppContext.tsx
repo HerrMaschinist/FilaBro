@@ -49,6 +49,8 @@ import { PrinterRepository } from "@/src/data/repositories/PrinterRepository";
 import type { PrinterProfileData } from "@/src/data/repositories/PrinterRepository";
 import Colors from "@/constants/colors";
 import i18n from "@/lib/i18n";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { NotificationService } from "@/src/services/NotificationService";
 import {
   DEMO_SPOOLS,
   DEMO_MANUFACTURERS,
@@ -534,6 +536,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setIsOnline(false);
           });
       }
+
+      // Niedrigbestand prüfen
+      try {
+        const thresholdStr = await AsyncStorage.getItem("spool_low_threshold");
+        const threshold = parseInt(thresholdStr ?? "20");
+        if (threshold > 0) {
+          const updatedSpool = spools.find(s => s.id === spoolId);
+          if (updatedSpool) {
+            const total = updatedSpool.filament?.weight ?? 1000;
+            const prevPercent = ((updatedSpool.remaining_weight ?? total) / total) * 100;
+            const newPercent = (weight / total) * 100;
+            if (prevPercent > threshold && newPercent <= threshold) {
+              const name = updatedSpool._displayName ?? updatedSpool.filament?.name ?? "Spule";
+              await NotificationService.scheduleSpoolLowNotification(name, weight, total);
+            }
+          }
+        }
+      } catch {}
     },
     [spools, serverUrl]
   );

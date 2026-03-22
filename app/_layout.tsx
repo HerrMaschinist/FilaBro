@@ -22,6 +22,7 @@ import { initCatalogDatabase } from "@/src/data/db/catalog_client";
 import { initFilabaseDatabase } from "@/src/data/db/filabase_client";
 import { useAppTheme } from "@/contexts/AppContext";
 import { PurchaseService } from "@/src/services/PurchaseService";
+import { NotificationService } from "@/src/services/NotificationService";
 import { ProProvider } from "@/src/contexts/ProContext";
 
 Sentry.init({
@@ -34,6 +35,7 @@ Sentry.init({
 });
 
 PurchaseService.init();
+NotificationService.requestPermission().catch(() => {});
 
 // Run SQLite migrations synchronously before any component mounts.
 // initDatabase() is idempotent — safe to call at module load time.

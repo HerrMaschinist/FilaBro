@@ -87,6 +87,7 @@ export default function SettingsScreen() {
   const [printerApiAdapter, setPrinterApiAdapter] = useState("Moonraker");
   const [printerApiTestState, setPrinterApiTestState] = useState<TestState>("idle");
   const [printerApiTestMessage, setPrinterApiTestMessage] = useState("");
+  const [lowThreshold, setLowThreshold] = useState("20");
 
   useEffect(() => {
     checkNfcAvailability().then(setNfcInfo);
@@ -97,6 +98,10 @@ export default function SettingsScreen() {
       setPrinterApiUrl(pairs[0][1] ?? "");
       setPrinterApiAdapter(pairs[1][1] ?? "Moonraker");
     });
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem("spool_low_threshold").then(v => setLowThreshold(v ?? "20"));
   }, []);
 
   const topInset = insets.top + (Platform.OS === "web" ? 67 : 0);
@@ -483,6 +488,35 @@ export default function SettingsScreen() {
           >
             <Text style={[s.btnLabel, { color: "#fff" }]}>Speichern</Text>
           </Pressable>
+        </View>
+      </View>
+
+      {/* ── Benachrichtigungen ── */}
+      <Text style={s.sectionHeader}>BENACHRICHTIGUNGEN</Text>
+      <View style={[s.card, { backgroundColor: colors.surface }]}>
+        <Text style={[s.label, { color: colors.textSecondary }]}>Niedrigbestand-Warnung</Text>
+        <View style={s.segmented}>
+          {(["Aus", "10%", "20%", "30%"] as const).map((label, i) => {
+            const val = ["0", "10", "20", "30"][i];
+            return (
+              <Pressable
+                key={val}
+                style={[
+                  s.segment,
+                  { borderColor: colors.surfaceBorder },
+                  lowThreshold === val && { backgroundColor: colors.accent, borderColor: colors.accent },
+                ]}
+                onPress={() => {
+                  AsyncStorage.setItem("spool_low_threshold", val);
+                  setLowThreshold(val);
+                }}
+              >
+                <Text style={[s.segmentLabel, { color: lowThreshold === val ? "#fff" : colors.text }]}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
