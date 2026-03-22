@@ -19,6 +19,7 @@ import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PrinterApiService } from "@/src/adapters/printer/PrinterApiService";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
+import * as Sentry from "@sentry/react-native";
 import { fontSize, fontWeight } from "@/constants/ui";
 import {
   checkNfcAvailability,
@@ -528,6 +529,18 @@ export default function SettingsScreen() {
             {Constants.expoConfig?.version ?? ""}
           </Text>
         </View>
+
+        <Pressable
+          onPress={() => {
+            Sentry.captureMessage("Test-Event von FilaBro Debug");
+          }}
+          style={s.debugRow}
+        >
+          <Ionicons name="bug-outline" size={20} color={colors.warning} />
+          <Text style={[s.debugKey, { color: colors.warning }]}>
+            Sentry Test-Event senden
+          </Text>
+        </Pressable>
       </View>
 
       <View style={{ height: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 100 }} />

@@ -32,13 +32,12 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # typescript
 *.tsbuildinfo
 .vercel
-
-.env
 
 # Local tool cache
 .config/

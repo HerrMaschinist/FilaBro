@@ -1,4 +1,5 @@
 import "@/lib/i18n";
+import * as Sentry from "@sentry/react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -20,6 +21,15 @@ import { initDatabase } from "@/src/data/db/client";
 import { initCatalogDatabase } from "@/src/data/db/catalog_client";
 import { initFilabaseDatabase } from "@/src/data/db/filabase_client";
 import { useAppTheme } from "@/contexts/AppContext";
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  debug: false,
+  tracesSampleRate: 0.2,
+  environment: __DEV__ ? "development" : "production",
+  enableNative: true,
+  attachScreenshot: false,
+});
 
 // Run SQLite migrations synchronously before any component mounts.
 // initDatabase() is idempotent — safe to call at module load time.
@@ -99,7 +109,7 @@ function RootLayoutNav() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -141,3 +151,5 @@ export default function RootLayout() {
     </ErrorBoundary>
   );
 }
+
+export default Sentry.wrap(RootLayout);
