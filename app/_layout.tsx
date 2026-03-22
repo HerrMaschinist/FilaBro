@@ -21,6 +21,8 @@ import { initDatabase } from "@/src/data/db/client";
 import { initCatalogDatabase } from "@/src/data/db/catalog_client";
 import { initFilabaseDatabase } from "@/src/data/db/filabase_client";
 import { useAppTheme } from "@/contexts/AppContext";
+import { PurchaseService } from "@/src/services/PurchaseService";
+import { ProProvider } from "@/src/contexts/ProContext";
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -30,6 +32,8 @@ Sentry.init({
   enableNative: true,
   attachScreenshot: false,
 });
+
+PurchaseService.init();
 
 // Run SQLite migrations synchronously before any component mounts.
 // initDatabase() is idempotent — safe to call at module load time.
@@ -105,6 +109,13 @@ function RootLayoutNav() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="paywall"
+        options={{
+          presentation: "modal",
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }
@@ -140,11 +151,13 @@ function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <AppProvider>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <RootLayoutNav />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
+            <ProProvider>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <KeyboardProvider>
+                  <RootLayoutNav />
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </ProProvider>
           </AppProvider>
         </SafeAreaProvider>
       </QueryClientProvider>

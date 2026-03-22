@@ -19,6 +19,7 @@ import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PrinterApiService } from "@/src/adapters/printer/PrinterApiService";
 import { useApp, useAppTheme } from "@/contexts/AppContext";
+import { usePro } from "@/src/contexts/ProContext";
 import * as Sentry from "@sentry/react-native";
 import { fontSize, fontWeight } from "@/constants/ui";
 import {
@@ -56,6 +57,7 @@ export default function SettingsScreen() {
   const { t } = useTranslation();
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { isPro } = usePro();
 
   const {
     serverUrl,
@@ -225,6 +227,29 @@ export default function SettingsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Text style={[s.pageTitle, { color: colors.text }]}>{t("settings.title")}</Text>
+
+      {/* ── FilaBro Pro ── */}
+      <Text style={s.sectionHeader}>FILABRO PRO</Text>
+      {isPro ? (
+        <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.success + "44" }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+            <Text style={[s.menuLabel, { color: colors.success }]}>FilaBro Pro aktiv ✓</Text>
+          </View>
+        </View>
+      ) : (
+        <Pressable
+          style={[s.card, { backgroundColor: colors.surface, borderColor: colors.accent + "44" }]}
+          onPress={() => router.push("/paywall" as any)}
+        >
+          <Text style={[s.proPrompt, { color: colors.textSecondary }]}>
+            Möchtest Du FilaBro Pro 7 Tage kostenlos testen?
+          </Text>
+          <View style={[s.proBtn, { backgroundColor: colors.accent }]}>
+            <Text style={s.proBtnLabel}>Jetzt testen →</Text>
+          </View>
+        </Pressable>
+      )}
 
       {/* ── Connection ── */}
       <Text style={s.sectionHeader}>
@@ -705,6 +730,21 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark) {
     },
     badgeLabel: {
       fontSize: 11,
+      fontFamily: fontWeight.semibold,
+      color: "#fff",
+    },
+    proPrompt: {
+      fontSize: fontSize.md,
+      fontFamily: fontWeight.regular,
+      marginBottom: 10,
+    },
+    proBtn: {
+      borderRadius: 8,
+      paddingVertical: 10,
+      alignItems: "center",
+    },
+    proBtnLabel: {
+      fontSize: fontSize.md,
       fontFamily: fontWeight.semibold,
       color: "#fff",
     },
