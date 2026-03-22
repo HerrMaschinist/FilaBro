@@ -345,6 +345,7 @@ const de = {
     create: "Erstellen",
     done: "Fertig",
     back: "Zurück",
+    close: "Schließen",
     web_preview_banner: "Web-Vorschau. Daten werden nicht gespeichert.",
   },
 } as const;
