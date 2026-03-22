@@ -1204,8 +1204,13 @@ function makeStyles(colors: typeof import("@/constants/colors").default.dark, is
       paddingBottom: 12,
     },
     viewfinderHint: {
-      color: "rgba(255,255,255,0.55)",
-      fontSize: fontSize.base,
+      position: "absolute",
+      bottom: 12,
+      left: 0,
+      right: 0,
+      textAlign: "center",
+      color: "rgba(255,255,255,0.75)",
+      fontSize: 13,
       fontFamily: fontWeight.regular,
     },
     resultCard: {

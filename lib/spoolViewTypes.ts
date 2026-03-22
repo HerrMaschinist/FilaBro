@@ -81,8 +81,5 @@ export function getDisplayName(spool: Spool): string {
   const filament = spool.filament;
   if (!filament) return `Spool #${spool.id}`;
   const parts: string[] = [];
-  if (filament.vendor?.name) parts.push(filament.vendor.name);
-  if (filament.name) parts.push(filament.name);
-  if (parts.length === 0) return `Spool #${spool.id}`;
-  return parts.join(" – ");
+  return filament.name ?? `Spool #${spool.id}`;
 }

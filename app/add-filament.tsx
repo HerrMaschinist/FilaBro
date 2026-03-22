@@ -585,7 +585,7 @@ export default function AddFilamentScreen() {
                   <View style={[styles.catalogColorDot, { backgroundColor: item.variant.colorHex ?? colors.textTertiary }]} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.catalogItemName, { color: colors.text }]} numberOfLines={1}>
-                      {item.brand.name} – {item.filament.name}
+                      {item.brand.name}: {item.filament.name}
                     </Text>
                     <Text style={[styles.catalogItemSub, { color: colors.textSecondary }]}>
                       {item.filament.material} · {item.variant.name}
