@@ -173,7 +173,7 @@ interface AppContextValue {
   isFavorite: (localId: string) => boolean;
 
   pendingUpdates: PendingUpdate[];
-  updateWeight: (spoolId: number, weight: number) => Promise<void>;
+  updateWeight: (localId: string, weight: number) => Promise<void>;
   syncPending: () => Promise<void>;
 
   isOnline: boolean;
@@ -492,43 +492,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const updateWeight = useCallback(
-    async (spoolId: number, weight: number) => {
-      const spool = spools.find((s) => s.id === spoolId);
+    async (localId: string, weight: number) => {
+      const spool = spools.find((s) => s._localId === localId);
       if (!spool) return;
 
       if (!isPersistenceEnabled) {
         setSpools((prev) =>
           prev.map((s) =>
-            s.id === spoolId ? { ...s, remaining_weight: weight } : s
+            s._localId === localId ? { ...s, remaining_weight: weight } : s
           )
         );
         return;
       }
 
-      if (!spool._localId) return;
-
+      // Optimistisches UI-Update
       setSpools((prev) =>
         prev.map((s) =>
-          s.id === spoolId ? { ...s, remaining_weight: weight } : s
+          s._localId === localId ? { ...s, remaining_weight: weight } : s
         )
       );
 
       setDirtySpoolIds((prev) => {
         const next = new Set(prev);
-        next.add(spoolId);
+        if (spool.id) next.add(spool.id);
         return next;
       });
 
       // Phase 4: record as adjustment event + upsert spool_stats projection
-      await WeightUseCase.adjustRemaining(spool._localId, weight, "manual");
+      await WeightUseCase.adjustRemaining(localId, weight, "manual");
 
       if (serverUrl) {
-        SyncUseCase.pushOne(serverUrl, spool._localId, FilaBaseAdapter)
+        SyncUseCase.pushOne(serverUrl, localId, FilaBaseAdapter)
           .then(() => {
             setIsOnline(true);
             setDirtySpoolIds((prev) => {
               const next = new Set(prev);
-              next.delete(spoolId);
+              if (spool.id) next.delete(spool.id);
               return next;
             });
           })
@@ -542,15 +541,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const thresholdStr = await AsyncStorage.getItem("spool_low_threshold");
         const threshold = parseInt(thresholdStr ?? "20");
         if (threshold > 0) {
-          const updatedSpool = spools.find(s => s.id === spoolId);
-          if (updatedSpool) {
-            const total = updatedSpool.filament?.weight ?? 1000;
-            const prevPercent = ((updatedSpool.remaining_weight ?? total) / total) * 100;
-            const newPercent = (weight / total) * 100;
-            if (prevPercent > threshold && newPercent <= threshold) {
-              const name = updatedSpool._displayName ?? updatedSpool.filament?.name ?? "Spule";
-              await NotificationService.scheduleSpoolLowNotification(name, weight, total);
-            }
+          const total = spool.filament?.weight ?? spool.initial_weight ?? 1000;
+          const prevPercent = ((spool.remaining_weight ?? total) / total) * 100;
+          const newPercent = (weight / total) * 100;
+          if (prevPercent > threshold && newPercent <= threshold) {
+            const name = spool._displayName ?? spool.filament?.name ?? "Spule";
+            await NotificationService.scheduleSpoolLowNotification(name, weight, total);
           }
         }
       } catch {}

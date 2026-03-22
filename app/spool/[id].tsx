@@ -103,7 +103,7 @@ export default function SpoolDetailScreen() {
     setIsSaving(true);
     setSaveError(null);
     try {
-      await updateWeight(spool.id, parsed);
+      await updateWeight(spool._localId ?? "", parsed);
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : t("detail.save_failed"));
     } finally {
@@ -144,7 +144,7 @@ export default function SpoolDetailScreen() {
     try {
       if (spool?._localId) {
         // updateWeight schreibt spool_stats + optimistisches UI-Update via AppContext
-        await updateWeight(spool.id, newRemaining);
+        await updateWeight(spool._localId ?? "", newRemaining);
         const events = await UsageEventRepository.listBySpool(spool._localId);
         setUsageEvents(events);
         setConsumeGrams("");
